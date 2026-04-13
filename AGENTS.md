@@ -12,17 +12,25 @@ This repo is for building **a domain-specific engine for authored turn-based tac
 It is a tool for crafting and testing a specific family of experiences.
 The exact product shape is expected to emerge through implementation and manual testing.
 
-## How to work here
+## Workflow
+
+Use discussion to frame the next question, especially for structural or hard-to-reverse choices.
+Answer it with the smallest runnable experiment that preserves flexibility and avoids premature assumptions.
 
 Build in small, manually testable slices.
 
 Preferred loop:
-1. Build a small working piece
-2. Test it manually
-3. Revise from actual use
-4. Repeat
+1. Discuss the next question
+2. Build a small working piece
+3. Test it manually
+4. Revise from actual use
+5. Repeat
 
-Optimize for discovering what works.
+Prefer short-lived, descriptively named branches for ideas, comparisons, and spikes.
+Name branches for the question or capability they explore, not by phase or sequence.
+
+Keep `main` as the current best known runnable baseline.
+Do not merge into `main` until something has been manually tested and shown useful.
 
 Keep a **portable core** and a **replaceable host**.
 Treat the first host runtime or engine as a convenience, not the product architecture.
@@ -64,7 +72,9 @@ Early repo docs should usually be limited to:
 - `README.md`
 - `AGENTS.md`
 - `CLAUDE.md`
-- `DECISIONS.md` when needed
+- `DECISIONS.md` when needed for settled constraints
+
+Do not create planning or process docs until the work earns them.
 
 ## Runtime behavior
 
@@ -76,7 +86,3 @@ When scripts launch processes, they should:
 - free known ports on teardown
 
 The project should play nice on Linux, macOS, and Windows.
-
-## Decision rule
-
-When direction is unclear, choose the smallest runnable path that preserves flexibility, can be tested manually, and avoids premature assumptions.
