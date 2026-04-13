@@ -182,9 +182,9 @@
       }
 
       .unit-card {
-        padding: 14px;
+        padding: 12px 14px;
         display: grid;
-        gap: 12px;
+        gap: 8px;
       }
 
       .unit-card[data-side="red"] {
@@ -195,27 +195,56 @@
         border-left: 3px solid var(--blue);
       }
 
-      .unit-head {
-        display: flex;
-        justify-content: space-between;
+      .unit-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 12px;
+        align-items: start;
+      }
+
+      .unit-head {
+        min-width: 0;
+        display: grid;
+        gap: 6px;
+      }
+
+      .unit-title {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .unit-meta {
         display: grid;
-        gap: 6px;
+        gap: 4px;
         color: var(--muted);
-        font-size: 0.85rem;
+        font-size: 0.82rem;
+        line-height: 1.35;
       }
 
       .tag {
         color: var(--accent);
       }
 
-      .plot-grid {
+      .plot-stack {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
+        justify-items: end;
+        align-self: start;
+      }
+
+      .plot-field {
+        gap: 4px;
+        justify-items: end;
+        font-size: 0.68rem;
+      }
+
+      .plot-field input {
+        width: 4.5rem;
+        min-width: 4.5rem;
+        padding: 6px 8px;
+        text-align: center;
       }
 
       .events {
@@ -264,6 +293,10 @@
           grid-auto-columns: initial;
           grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           overflow-x: visible;
+        }
+
+        .unit-layout {
+          gap: 10px;
         }
       }
     </style>
@@ -454,24 +487,28 @@
             : "no locked plot";
 
           card.innerHTML = `
-            <div class="unit-head">
-              <strong>${entity.id}</strong>
-              <span class="tag">${entity.destroyed ? "destroyed" : entity.side}</span>
-            </div>
-            <div class="unit-meta">
-              <div>hex ${entity.at[0]},${entity.at[1]} | facing ${entity.facing}</div>
-              <div>hull ${entity.stats.hull} | shield ${entity.stats.shield} | max speed ${entity.stats.speed}</div>
-              <div>${plotText}</div>
-            </div>
-            <div class="plot-grid">
-              <label>
-                Heading
-                <input data-unit="${entity.id}" data-field="heading" type="number" min="0" max="5" value="${draft.heading}" ${entity.destroyed ? "disabled" : ""}>
-              </label>
-              <label>
-                Speed
-                <input data-unit="${entity.id}" data-field="speed" type="number" min="0" max="${entity.stats.speed}" value="${draft.speed}" ${entity.destroyed ? "disabled" : ""}>
-              </label>
+            <div class="unit-layout">
+              <div class="unit-head">
+                <div class="unit-title">
+                  <strong>${entity.id}</strong>
+                  ${entity.destroyed ? '<span class="tag">destroyed</span>' : ""}
+                </div>
+                <div class="unit-meta">
+                  <div>hex ${entity.at[0]},${entity.at[1]} | facing ${entity.facing}</div>
+                  <div>hull ${entity.stats.hull} | shield ${entity.stats.shield} | max speed ${entity.stats.speed}</div>
+                  <div>${plotText}</div>
+                </div>
+              </div>
+              <div class="plot-stack">
+                <label class="plot-field">
+                  Heading
+                  <input data-unit="${entity.id}" data-field="heading" type="number" min="0" max="5" value="${draft.heading}" ${entity.destroyed ? "disabled" : ""}>
+                </label>
+                <label class="plot-field">
+                  Speed
+                  <input data-unit="${entity.id}" data-field="speed" type="number" min="0" max="${entity.stats.speed}" value="${draft.speed}" ${entity.destroyed ? "disabled" : ""}>
+                </label>
+              </div>
             </div>
           `;
 
@@ -508,6 +545,7 @@
         const size = 90;
         const margin = 54;
         const viewportScale = 1.2;
+        const shipScale = 1.5;
         const [widthCount, heightCount] = snapshot.board.bounds;
         const hexes = [];
         let maxX = 0;
@@ -544,10 +582,12 @@
 
           const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
           label.setAttribute("x", renderX);
-          label.setAttribute("y", renderY + 3);
+          label.setAttribute("y", renderY - 18);
           label.setAttribute("text-anchor", "middle");
-          label.setAttribute("font-size", "10.125");
-          label.setAttribute("fill", "rgba(160, 181, 206, 0.55)");
+          label.setAttribute("dominant-baseline", "middle");
+          label.setAttribute("font-size", "22");
+          label.setAttribute("font-weight", "600");
+          label.setAttribute("fill", "rgba(122, 142, 166, 0.46)");
           label.textContent = `${hex.q},${hex.r}`;
           board.appendChild(label);
         }
@@ -557,7 +597,7 @@
           const x = rawX + offsetX;
           const y = rawY + offsetY;
           const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-          group.setAttribute("transform", `translate(${x} ${y}) rotate(${-60 * entity.facing})`);
+          group.setAttribute("transform", `translate(${x} ${y}) rotate(${-60 * entity.facing}) scale(${shipScale})`);
 
           const hull = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
           hull.setAttribute("points", "-13.5,8.4375 15.1875,0 -13.5,-8.4375");
@@ -570,9 +610,9 @@
 
           const badge = document.createElementNS("http://www.w3.org/2000/svg", "text");
           badge.setAttribute("x", x);
-          badge.setAttribute("y", y - 23.625);
+          badge.setAttribute("y", y - 35.4375);
           badge.setAttribute("text-anchor", "middle");
-          badge.setAttribute("font-size", "16.875");
+          badge.setAttribute("font-size", "25.3125");
           badge.setAttribute("fill", "#f4f7fb");
           badge.textContent = `${entity.id} h${entity.stats.hull}/s${entity.stats.shield}`;
           board.appendChild(badge);
@@ -580,9 +620,9 @@
           if (entity.plot) {
             const plotLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
             plotLabel.setAttribute("x", x);
-            plotLabel.setAttribute("y", y + 27);
+            plotLabel.setAttribute("y", y + 40.5);
             plotLabel.setAttribute("text-anchor", "middle");
-            plotLabel.setAttribute("font-size", "15.1875");
+            plotLabel.setAttribute("font-size", "22.78125");
             plotLabel.setAttribute("fill", "var(--accent)");
             plotLabel.textContent = `plot ${entity.plot.heading}:${entity.plot.speed}`;
             board.appendChild(plotLabel);
