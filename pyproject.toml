@@ -1,0 +1,6 @@
+[project]
+name = "tac-sandbox"
+version = "0.0.0"
+requires-python = ">=3.12"
+description = "Greenfield tactical scenario engine experiments."
+

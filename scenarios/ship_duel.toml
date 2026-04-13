@@ -1,0 +1,36 @@
+title = "Ship Duel"
+
+[space]
+model = "hex"
+bounds = [9, 9]
+
+[turn]
+phases = ["plot_heading_speed", "resolve_plotted_move", "resolve_attacks"]
+
+[[units]]
+id = "red_1"
+side = "red"
+at = [2, 4]
+facing = 0
+hull = 4
+shield = 2
+speed = 3
+
+[units.weapon]
+arc = "front"
+range = 3
+damage = 1
+
+[[units]]
+id = "blue_1"
+side = "blue"
+at = [6, 4]
+facing = 3
+hull = 4
+shield = 2
+speed = 3
+
+[units.weapon]
+arc = "front"
+range = 3
+damage = 1
