@@ -1,7 +1,6 @@
 # tac-sandbox
 
-A domain-specific engine for authored turn-based tactical scenarios on flexible play surfaces.
+Greenfield workspace for tactical scenario engine experiments.
 
-Early exploration — the product shape is expected to emerge through implementation and manual testing.
-
-See `AGENTS.md` for how work happens in this repo.
+`AGENTS.md` is the authoritative guide for repo intent, working style, and decision-making.
+`CLAUDE.md` exists only as a pointer to `AGENTS.md`.

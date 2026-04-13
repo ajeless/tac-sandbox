@@ -79,8 +79,4 @@ The project should play nice on Linux, macOS, and Windows.
 
 ## Decision rule
 
-When direction is unclear, choose the smallest path that:
-- preserves flexibility
-- produces something runnable
-- can be tested manually
-- avoids premature assumptions
+When direction is unclear, choose the smallest runnable path that preserves flexibility, can be tested manually, and avoids premature assumptions.
