@@ -10,3 +10,9 @@ Run the current spike with:
 ```bash
 uv run python -m tac_sandbox.cli scenarios/ship_duel.toml
 ```
+
+Minimal browser host:
+
+```bash
+uv run python -m tac_sandbox.web_host scenarios/ship_duel.toml --port 8000
+```

@@ -5,6 +5,7 @@ import shlex
 from pathlib import Path
 
 from .engine import advance, load_scenario, start_session, submit_input
+from .presentation import describe_event
 
 
 def main() -> int:
@@ -17,7 +18,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    scenario = load_scenario(Path(args.scenario))
+    try:
+        scenario = load_scenario(Path(args.scenario))
+    except ValueError as exc:
+        print(f"error: {exc}")
+        return 1
     session = start_session(scenario)
 
     print(f"Loaded {scenario['title']} from {scenario['path']}")
@@ -110,7 +115,7 @@ def _show_log(session: dict) -> None:
         return
 
     for event in session["log"]:
-        print(_format_event(event))
+        print(describe_event(event))
 
 
 def _print_result(result: dict) -> None:
@@ -141,53 +146,12 @@ def _print_result(result: dict) -> None:
         )
         if result["events"]:
             for event in result["events"]:
-                print(_format_event(event))
+                print(describe_event(event))
         else:
             print("no events")
         return
 
     print(result)
-
-
-def _format_event(event: dict) -> str:
-    event_type = event["type"]
-    if event_type == "orders_locked":
-        return (
-            f"turn {event['turn']} {event['unit']} plotted heading={event['heading']} "
-            f"speed={event['speed']}"
-        )
-    if event_type == "moved":
-        return (
-            f"turn {event['turn']} {event['unit']} moved "
-            f"{tuple(event['from_hex'])} -> {tuple(event['to_hex'])}"
-        )
-    if event_type == "move_blocked_bounds":
-        return (
-            f"turn {event['turn']} {event['unit']} stayed at {tuple(event['from_hex'])} "
-            f"because {tuple(event['attempted'])} is out of bounds"
-        )
-    if event_type == "move_blocked_collision":
-        return (
-            f"turn {event['turn']} {event['unit']} stayed at {tuple(event['from_hex'])} "
-            f"because of a collision at {tuple(event['attempted'])}"
-        )
-    if event_type == "attack_declared":
-        return (
-            f"turn {event['turn']} {event['unit']} attacked {event['target']} "
-            f"for {event['damage']} at range {event['range']}"
-        )
-    if event_type == "attack_skipped":
-        target = f" target={event['target']}" if "target" in event else ""
-        return f"turn {event['turn']} {event['unit']} skipped attack{target} reason={event['reason']}"
-    if event_type == "damage_applied":
-        return (
-            f"turn {event['turn']} {event['unit']} took {event['damage']} damage "
-            f"(shield {event['shield_before']}->{event['shield_after']}, "
-            f"hull {event['hull_before']}->{event['hull_after']})"
-        )
-    if event_type == "unit_destroyed":
-        return f"turn {event['turn']} {event['unit']} was destroyed"
-    return str(event)
 
 
 if __name__ == "__main__":

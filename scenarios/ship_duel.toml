@@ -2,7 +2,7 @@ title = "Ship Duel"
 
 [space]
 model = "hex"
-bounds = [9, 9]
+bounds = [12, 12]
 
 [turn]
 phases = ["plot_heading_speed", "resolve_plotted_move", "resolve_attacks"]
@@ -10,7 +10,7 @@ phases = ["plot_heading_speed", "resolve_plotted_move", "resolve_attacks"]
 [[units]]
 id = "red_1"
 side = "red"
-at = [2, 4]
+at = [3, 6]
 facing = 0
 hull = 4
 shield = 2
@@ -24,7 +24,7 @@ damage = 1
 [[units]]
 id = "blue_1"
 side = "blue"
-at = [6, 4]
+at = [7, 6]
 facing = 3
 hull = 4
 shield = 2

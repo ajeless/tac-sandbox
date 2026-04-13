@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tac-sandbox</title>
+    <style>
+      :root {
+        --bg: #09111d;
+        --panel: rgba(8, 20, 35, 0.8);
+        --panel-strong: rgba(7, 16, 28, 0.92);
+        --panel-border: rgba(145, 170, 196, 0.2);
+        --text: #e6edf6;
+        --muted: #8ea3bb;
+        --grid-fill: rgba(23, 44, 71, 0.62);
+        --grid-stroke: rgba(104, 134, 169, 0.45);
+        --accent: #f0c46a;
+        --red: #ff6f61;
+        --blue: #79b8ff;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Iosevka", "IBM Plex Mono", "SFMono-Regular", monospace;
+        background:
+          radial-gradient(circle at top left, rgba(70, 112, 165, 0.18), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(240, 196, 106, 0.12), transparent 32%),
+          linear-gradient(180deg, #07111b 0%, #0b1522 100%);
+        color: var(--text);
+      }
+
+      button,
+      input {
+        border: 1px solid rgba(145, 170, 196, 0.22);
+        border-radius: 12px;
+        background: rgba(13, 27, 44, 0.85);
+        color: var(--text);
+        font: inherit;
+      }
+
+      button {
+        padding: 11px 14px;
+        cursor: pointer;
+        transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(240, 196, 106, 0.55);
+        background: rgba(18, 35, 56, 0.95);
+      }
+
+      input {
+        width: 100%;
+        padding: 10px 12px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.76rem;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .app {
+        height: 100vh;
+        padding: 18px;
+        display: grid;
+        grid-template-rows: minmax(160px, 20vh) minmax(0, 1fr);
+        gap: 18px;
+        overflow: hidden;
+      }
+
+      .card {
+        border: 1px solid var(--panel-border);
+        border-radius: 22px;
+        background: var(--panel);
+        backdrop-filter: blur(14px);
+        box-shadow: var(--shadow);
+      }
+
+      .dock {
+        padding: 18px 20px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 16px;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .dock-header,
+      .section-header,
+      .board-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .title {
+        margin: 0;
+        font-size: 1.25rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .subhead {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .phase-chip {
+        color: var(--accent);
+        font-size: 0.9rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .status {
+        min-height: 44px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(8, 16, 29, 0.9);
+        color: var(--muted);
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+      }
+
+      .dock-body {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.75fr);
+        gap: 16px;
+      }
+
+      .unit-section,
+      .event-section {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 10px;
+      }
+
+      .unit-grid {
+        min-height: 0;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(240px, 1fr);
+        gap: 12px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .unit-card,
+      .event-card {
+        border-radius: 16px;
+        background: rgba(8, 16, 29, 0.92);
+        border: 1px solid rgba(145, 170, 196, 0.14);
+      }
+
+      .unit-card {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .unit-card[data-side="red"] {
+        border-left: 3px solid var(--red);
+      }
+
+      .unit-card[data-side="blue"] {
+        border-left: 3px solid var(--blue);
+      }
+
+      .unit-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .unit-meta {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .tag {
+        color: var(--accent);
+      }
+
+      .plot-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .events {
+        min-height: 0;
+        display: grid;
+        gap: 10px;
+        overflow-y: auto;
+      }
+
+      .event-card {
+        padding: 12px 14px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .board-panel {
+        min-height: 0;
+        padding: 18px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 12px;
+        overflow: hidden;
+      }
+
+      #board {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at center, rgba(26, 54, 86, 0.35), transparent 55%),
+          linear-gradient(180deg, rgba(6, 15, 27, 0.96), rgba(9, 19, 32, 0.98));
+      }
+
+      @media (max-width: 980px) {
+        .app {
+          grid-template-rows: auto minmax(0, 1fr);
+        }
+
+        .dock-body {
+          grid-template-columns: 1fr;
+        }
+
+        .unit-grid {
+          grid-auto-flow: row;
+          grid-auto-columns: initial;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          overflow-x: visible;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <section class="dock card">
+        <div class="dock-header">
+          <div class="header-left">
+            <h1 class="title" id="title">tac-sandbox</h1>
+            <div class="subhead" id="turn-meta">Loading...</div>
+            <div class="phase-chip" id="phase-meta">Phase</div>
+          </div>
+          <div class="action-row">
+            <button id="plot-button" type="button">Submit Plots</button>
+            <button id="step-button" type="button">Step</button>
+            <button id="reset-button" type="button">Reset</button>
+            <button id="refresh-button" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div class="dock-body">
+          <section class="unit-section">
+            <div class="section-header">
+              <div class="title" style="font-size:1rem;">Unit Orders</div>
+              <div class="subhead">Per-unit draft inputs, one shared submit</div>
+            </div>
+            <div id="units" class="unit-grid"></div>
+          </section>
+
+          <section class="event-section">
+            <div class="section-header">
+              <div class="title" style="font-size:1rem;">Status</div>
+              <div class="subhead">Latest engine feedback</div>
+            </div>
+            <div id="status" class="status">Ready</div>
+            <div class="section-header">
+              <div class="title" style="font-size:1rem;">Recent Events</div>
+              <div class="subhead">Latest engine log entries</div>
+            </div>
+            <div id="events" class="events"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="board-panel card">
+        <div class="board-header">
+          <div class="title" style="font-size:1rem;">Board</div>
+          <div class="subhead">Renderer consumes snapshot state only</div>
+        </div>
+        <svg id="board" viewBox="0 0 800 600" aria-label="tactical board"></svg>
+      </section>
+    </div>
+
+    <script>
+      const board = document.getElementById("board");
+      const titleEl = document.getElementById("title");
+      const turnMetaEl = document.getElementById("turn-meta");
+      const phaseMetaEl = document.getElementById("phase-meta");
+      const statusEl = document.getElementById("status");
+      const unitsEl = document.getElementById("units");
+      const eventsEl = document.getElementById("events");
+      const plotButton = document.getElementById("plot-button");
+      const stepButton = document.getElementById("step-button");
+      const resetButton = document.getElementById("reset-button");
+      const refreshButton = document.getElementById("refresh-button");
+
+      let snapshot = null;
+      let plotDrafts = {};
+
+      function defaultDraft(entity) {
+        const plot = entity.plot || { heading: entity.facing, speed: 0 };
+        return { heading: plot.heading, speed: plot.speed };
+      }
+
+      function rebuildDrafts(entities) {
+        const nextDrafts = {};
+        for (const entity of entities) {
+          nextDrafts[entity.id] = defaultDraft(entity);
+        }
+        plotDrafts = nextDrafts;
+      }
+
+      function statusText(result) {
+        if (!result) {
+          return "Ready";
+        }
+        if (result.status === "awaiting_input") {
+          const missing = (result.missing_units || []).join(", ");
+          return missing ? `Awaiting input: ${missing}` : "Awaiting input";
+        }
+        if (result.status === "input_recorded") {
+          return `Stored plot for ${result.unit}`;
+        }
+        if (result.status === "resolved") {
+          return `Resolved ${result.phase} -> ${result.next_phase}`;
+        }
+        if (result.status === "reset") {
+          return "Session reset";
+        }
+        if (result.status === "rejected") {
+          return (result.errors || []).join("\n") || "Input rejected";
+        }
+        return JSON.stringify(result);
+      }
+
+      async function request(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
+        }
+        return response.json();
+      }
+
+      async function refresh() {
+        const data = await request("/api/state");
+        applySnapshot(data.snapshot);
+        statusEl.textContent = "Ready";
+      }
+
+      async function applyAction(path, body = {}) {
+        const data = await request(path, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        applySnapshot(data.snapshot);
+        statusEl.textContent = statusText(data.result);
+      }
+
+      async function submitPlots() {
+        if (!snapshot) {
+          return;
+        }
+
+        const activeEntities = snapshot.entities.filter((entity) => !entity.destroyed);
+        let latestSnapshot = snapshot;
+        const messages = [];
+
+        for (const entity of activeEntities) {
+          const draft = plotDrafts[entity.id] || defaultDraft(entity);
+          const data = await request("/api/plot", {
+            method: "POST",
+            body: JSON.stringify({
+              unit: entity.id,
+              heading: Number(draft.heading),
+              speed: Number(draft.speed),
+            }),
+          });
+          latestSnapshot = data.snapshot;
+          messages.push(statusText(data.result));
+        }
+
+        applySnapshot(latestSnapshot);
+        statusEl.textContent = messages.join("\n") || "No active units";
+      }
+
+      function applySnapshot(nextSnapshot) {
+        snapshot = nextSnapshot;
+        rebuildDrafts(snapshot.entities);
+        titleEl.textContent = snapshot.title;
+        turnMetaEl.textContent = `Turn ${snapshot.turn.number}`;
+        phaseMetaEl.textContent = snapshot.turn.phase;
+        renderUnits(snapshot.entities);
+        renderEvents(snapshot.recent_events);
+        renderBoard(snapshot);
+      }
+
+      function updateDraft(unitId, field, value) {
+        if (!(unitId in plotDrafts)) {
+          return;
+        }
+        plotDrafts[unitId][field] = value;
+      }
+
+      function renderUnits(entities) {
+        unitsEl.innerHTML = "";
+        for (const entity of entities) {
+          const card = document.createElement("article");
+          card.className = "unit-card";
+          card.dataset.side = entity.side;
+
+          const draft = plotDrafts[entity.id] || defaultDraft(entity);
+          const plotText = entity.plot
+            ? `locked plot ${entity.plot.heading}:${entity.plot.speed}`
+            : "no locked plot";
+
+          card.innerHTML = `
+            <div class="unit-head">
+              <strong>${entity.id}</strong>
+              <span class="tag">${entity.destroyed ? "destroyed" : entity.side}</span>
+            </div>
+            <div class="unit-meta">
+              <div>hex ${entity.at[0]},${entity.at[1]} | facing ${entity.facing}</div>
+              <div>hull ${entity.stats.hull} | shield ${entity.stats.shield} | max speed ${entity.stats.speed}</div>
+              <div>${plotText}</div>
+            </div>
+            <div class="plot-grid">
+              <label>
+                Heading
+                <input data-unit="${entity.id}" data-field="heading" type="number" min="0" max="5" value="${draft.heading}" ${entity.destroyed ? "disabled" : ""}>
+              </label>
+              <label>
+                Speed
+                <input data-unit="${entity.id}" data-field="speed" type="number" min="0" max="${entity.stats.speed}" value="${draft.speed}" ${entity.destroyed ? "disabled" : ""}>
+              </label>
+            </div>
+          `;
+
+          unitsEl.appendChild(card);
+        }
+
+        for (const input of unitsEl.querySelectorAll("input[data-unit]")) {
+          input.addEventListener("input", (event) => {
+            const target = event.currentTarget;
+            updateDraft(target.dataset.unit, target.dataset.field, Number(target.value));
+          });
+        }
+      }
+
+      function renderEvents(events) {
+        eventsEl.innerHTML = "";
+        if (events.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "event-card";
+          empty.textContent = "No events yet";
+          eventsEl.appendChild(empty);
+          return;
+        }
+
+        for (const item of events.slice().reverse()) {
+          const card = document.createElement("div");
+          card.className = "event-card";
+          card.textContent = item.text;
+          eventsEl.appendChild(card);
+        }
+      }
+
+      function renderBoard(snapshot) {
+        const size = 90;
+        const margin = 54;
+        const viewportScale = 1.2;
+        const [widthCount, heightCount] = snapshot.board.bounds;
+        const hexes = [];
+        let maxX = 0;
+        let maxY = 0;
+
+        for (let q = 0; q < widthCount; q += 1) {
+          for (let r = 0; r < heightCount; r += 1) {
+            const [x, y] = axialToPixel(q, r, size, margin);
+            hexes.push({ q, r, x, y });
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+
+        const contentWidth = maxX + margin;
+        const contentHeight = maxY + margin;
+        const viewportWidth = contentWidth * viewportScale;
+        const viewportHeight = contentHeight * viewportScale;
+        const offsetX = (viewportWidth - contentWidth) / 2;
+        const offsetY = (viewportHeight - contentHeight) / 2;
+
+        board.setAttribute("viewBox", `0 0 ${viewportWidth} ${viewportHeight}`);
+        board.innerHTML = "";
+
+        for (const hex of hexes) {
+          const renderX = hex.x + offsetX;
+          const renderY = hex.y + offsetY;
+          const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          polygon.setAttribute("points", hexPoints(renderX, renderY, size - 1));
+          polygon.setAttribute("fill", "var(--grid-fill)");
+          polygon.setAttribute("stroke", "var(--grid-stroke)");
+          polygon.setAttribute("stroke-width", "1.4");
+          board.appendChild(polygon);
+
+          const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          label.setAttribute("x", renderX);
+          label.setAttribute("y", renderY + 3);
+          label.setAttribute("text-anchor", "middle");
+          label.setAttribute("font-size", "10.125");
+          label.setAttribute("fill", "rgba(160, 181, 206, 0.55)");
+          label.textContent = `${hex.q},${hex.r}`;
+          board.appendChild(label);
+        }
+
+        for (const entity of snapshot.entities) {
+          const [rawX, rawY] = axialToPixel(entity.at[0], entity.at[1], size, margin);
+          const x = rawX + offsetX;
+          const y = rawY + offsetY;
+          const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          group.setAttribute("transform", `translate(${x} ${y}) rotate(${-60 * entity.facing})`);
+
+          const hull = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          hull.setAttribute("points", "-13.5,8.4375 15.1875,0 -13.5,-8.4375");
+          hull.setAttribute("fill", entity.side === "red" ? "var(--red)" : "var(--blue)");
+          hull.setAttribute("stroke", "rgba(248, 249, 252, 0.85)");
+          hull.setAttribute("stroke-width", entity.destroyed ? "1.5" : "2.1");
+          hull.setAttribute("opacity", entity.destroyed ? "0.35" : "0.95");
+          group.appendChild(hull);
+          board.appendChild(group);
+
+          const badge = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          badge.setAttribute("x", x);
+          badge.setAttribute("y", y - 23.625);
+          badge.setAttribute("text-anchor", "middle");
+          badge.setAttribute("font-size", "16.875");
+          badge.setAttribute("fill", "#f4f7fb");
+          badge.textContent = `${entity.id} h${entity.stats.hull}/s${entity.stats.shield}`;
+          board.appendChild(badge);
+
+          if (entity.plot) {
+            const plotLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            plotLabel.setAttribute("x", x);
+            plotLabel.setAttribute("y", y + 27);
+            plotLabel.setAttribute("text-anchor", "middle");
+            plotLabel.setAttribute("font-size", "15.1875");
+            plotLabel.setAttribute("fill", "var(--accent)");
+            plotLabel.textContent = `plot ${entity.plot.heading}:${entity.plot.speed}`;
+            board.appendChild(plotLabel);
+          }
+        }
+      }
+
+      function axialToPixel(q, r, size, margin) {
+        return [
+          margin + Math.sqrt(3) * size * (q + r / 2),
+          margin + 1.5 * size * r,
+        ];
+      }
+
+      function hexPoints(x, y, size) {
+        const points = [];
+        for (let index = 0; index < 6; index += 1) {
+          const angle = ((60 * index) - 30) * Math.PI / 180;
+          points.push(`${x + (Math.cos(angle) * size)},${y + (Math.sin(angle) * size)}`);
+        }
+        return points.join(" ");
+      }
+
+      plotButton.addEventListener("click", () => {
+        submitPlots().catch((error) => {
+          statusEl.textContent = String(error);
+        });
+      });
+
+      stepButton.addEventListener("click", () => {
+        applyAction("/api/step").catch((error) => {
+          statusEl.textContent = String(error);
+        });
+      });
+
+      resetButton.addEventListener("click", () => {
+        applyAction("/api/reset").catch((error) => {
+          statusEl.textContent = String(error);
+        });
+      });
+
+      refreshButton.addEventListener("click", () => {
+        refresh().catch((error) => {
+          statusEl.textContent = String(error);
+        });
+      });
+
+      refresh().catch((error) => {
+        statusEl.textContent = String(error);
+      });
+    </script>
+  </body>
+</html>
