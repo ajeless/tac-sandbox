@@ -4,8 +4,9 @@ import argparse
 import shlex
 from pathlib import Path
 
-from .engine import advance, load_scenario, start_session, submit_input, terminal_state
+from .engine import advance, load_scenario, start_session, submit_input
 from .presentation import describe_event
+from .session_state import terminal_state
 
 
 def main() -> int:

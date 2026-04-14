@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from .engine import terminal_state
+from .session_state import terminal_state
 
 
 def present_session(

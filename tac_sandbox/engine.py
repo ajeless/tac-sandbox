@@ -5,7 +5,8 @@ from pathlib import Path
 import tomllib
 
 from .phases import PHASE_HANDLERS, PhaseHandler
-from .rules import active_unit_ids, in_bounds
+from .rules import in_bounds
+from .session_state import terminal_state
 
 SUPPORTED_PHASES = set(PHASE_HANDLERS)
 
@@ -223,16 +224,6 @@ def advance(scenario: dict, session: dict) -> dict:
 
 def _phase_handler(phase_name: str) -> PhaseHandler:
     return PHASE_HANDLERS[phase_name]
-
-
-def terminal_state(scenario: dict, session: dict) -> dict | None:
-    if active_unit_ids(scenario, session):
-        return None
-
-    return {
-        "reason": "no_active_units",
-        "text": "No active units remain. Reset to start over.",
-    }
 
 
 def _advance_phase(scenario: dict, session: dict) -> None:
