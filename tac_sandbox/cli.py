@@ -4,7 +4,7 @@ import argparse
 import shlex
 from pathlib import Path
 
-from .engine import advance, load_scenario, start_session, submit_input
+from .engine import advance, load_scenario, start_session, submit_input, terminal_state
 from .presentation import describe_event
 
 
@@ -89,6 +89,9 @@ def main() -> int:
 
 def _show_session(scenario: dict, session: dict) -> None:
     print(f"Turn {session['turn']} phase {session['phase']}")
+    terminal = terminal_state(scenario, session)
+    if terminal is not None:
+        print(f"session ended: {terminal['text']}")
     for unit_id in scenario["unit_order"]:
         unit = session["units"][unit_id]
         status = "destroyed" if unit["destroyed"] else "active"
@@ -140,10 +143,17 @@ def _print_result(result: dict) -> None:
             print(f"error: {error}")
         return
 
+    if status == "terminal":
+        print(result["terminal"]["text"])
+        return
+
     if status == "resolved":
-        print(
-            f"resolved {result['phase']} -> turn {result['turn']} phase {result['next_phase']}"
-        )
+        if result.get("terminal") is not None:
+            print(f"resolved {result['phase']} -> session ended")
+        else:
+            print(
+                f"resolved {result['phase']} -> turn {result['turn']} phase {result['next_phase']}"
+            )
         if result["events"]:
             for event in result["events"]:
                 print(describe_event(event))

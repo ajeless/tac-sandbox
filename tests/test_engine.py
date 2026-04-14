@@ -85,3 +85,44 @@ class EngineFlowTests(unittest.TestCase):
         self.assertEqual(session["units"]["blue_1"]["max_speed"], 3)
         self.assertEqual(session["units"]["blue_1"]["shield"], 1)
         self.assertEqual(session["units"]["blue_1"]["hull"], 4)
+
+    def test_attack_resolution_can_end_the_session_when_no_active_units_remain(self) -> None:
+        scenario, session = fresh_session()
+
+        session["units"]["red_1"]["at"] = [0, -1]
+        session["units"]["red_1"]["shield"] = 0
+        session["units"]["red_1"]["hull"] = 1
+        session["units"]["blue_1"]["at"] = [0, 1]
+        session["units"]["blue_1"]["shield"] = 0
+        session["units"]["blue_1"]["hull"] = 1
+
+        submit_input(scenario, session, {"unit": "red_1", "heading": 3, "speed": 0})
+        submit_input(scenario, session, {"unit": "blue_1", "heading": 0, "speed": 0})
+
+        advance(scenario, session)
+        advance(scenario, session)
+        result = advance(scenario, session)
+
+        self.assertEqual(result["status"], "resolved")
+        self.assertEqual(result["phase"], "resolve_attacks")
+        self.assertEqual(result["next_phase"], None)
+        self.assertEqual(result["terminal"]["reason"], "no_active_units")
+        self.assertEqual(session["phase"], "resolve_attacks")
+        self.assertTrue(session["units"]["red_1"]["destroyed"])
+        self.assertTrue(session["units"]["blue_1"]["destroyed"])
+
+    def test_terminal_session_rejects_additional_plots_and_steps(self) -> None:
+        scenario, session = fresh_session()
+
+        for unit in session["units"].values():
+            unit["destroyed"] = True
+            unit["shield"] = 0
+            unit["hull"] = 0
+
+        plot_result = submit_input(scenario, session, {"unit": "red_1", "heading": 3, "speed": 0})
+        self.assertEqual(plot_result["status"], "terminal")
+        self.assertEqual(plot_result["terminal"]["reason"], "no_active_units")
+
+        step_result = advance(scenario, session)
+        self.assertEqual(step_result["status"], "terminal")
+        self.assertEqual(step_result["terminal"]["reason"], "no_active_units")

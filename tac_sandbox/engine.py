@@ -5,7 +5,7 @@ from pathlib import Path
 import tomllib
 
 from .phases import PHASE_HANDLERS, PhaseHandler
-from .rules import in_bounds
+from .rules import active_unit_ids, in_bounds
 
 SUPPORTED_PHASES = set(PHASE_HANDLERS)
 
@@ -175,11 +175,27 @@ def start_session(scenario: dict) -> dict:
 
 
 def submit_input(scenario: dict, session: dict, data: dict) -> dict:
+    terminal = terminal_state(scenario, session)
+    if terminal is not None:
+        return {
+            "status": "terminal",
+            "phase": session["phase"],
+            "terminal": terminal,
+        }
+
     handler = _phase_handler(session["phase"])
     return handler.submit_input(scenario, session, data)
 
 
 def advance(scenario: dict, session: dict) -> dict:
+    terminal = terminal_state(scenario, session)
+    if terminal is not None:
+        return {
+            "status": "terminal",
+            "phase": session["phase"],
+            "terminal": terminal,
+        }
+
     handler = _phase_handler(session["phase"])
     awaiting = handler.awaiting(scenario, session)
     if awaiting is not None:
@@ -192,18 +208,31 @@ def advance(scenario: dict, session: dict) -> dict:
     events = handler.resolve(scenario, session)
     session["log"].extend(events)
     resolved_phase = session["phase"]
-    _advance_phase(scenario, session)
+    terminal = terminal_state(scenario, session)
+    if terminal is None:
+        _advance_phase(scenario, session)
     return {
         "status": "resolved",
         "phase": resolved_phase,
         "events": events,
-        "next_phase": session["phase"],
+        "next_phase": None if terminal is not None else session["phase"],
+        "terminal": terminal,
         "turn": session["turn"],
     }
 
 
 def _phase_handler(phase_name: str) -> PhaseHandler:
     return PHASE_HANDLERS[phase_name]
+
+
+def terminal_state(scenario: dict, session: dict) -> dict | None:
+    if active_unit_ids(scenario, session):
+        return None
+
+    return {
+        "reason": "no_active_units",
+        "text": "No active units remain. Reset to start over.",
+    }
 
 
 def _advance_phase(scenario: dict, session: dict) -> None:

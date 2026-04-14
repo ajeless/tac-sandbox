@@ -404,13 +404,24 @@
         plotDrafts = nextDrafts;
       }
 
-      function phaseConfig(phase) {
+      function phaseConfig(phase, terminal) {
+        if (terminal) {
+          return {
+            label: "Session Ended",
+            guide: terminal.text,
+            plotEnabled: false,
+            plotLabel: "Session Ended",
+            stepEnabled: false,
+            stepLabel: "No More Steps",
+          };
+        }
         if (phase === "plot_heading_speed") {
           return {
             label: "Plot Orders",
             guide: "Set heading and speed for each active ship, then lock orders.",
             plotEnabled: true,
             plotLabel: "Submit Plots",
+            stepEnabled: true,
             stepLabel: "Lock Orders",
           };
         }
@@ -420,6 +431,7 @@
             guide: "Orders are locked. The next step resolves movement.",
             plotEnabled: false,
             plotLabel: "Plots Locked",
+            stepEnabled: true,
             stepLabel: "Resolve Movement",
           };
         }
@@ -429,6 +441,7 @@
             guide: "Movement is complete. The next step resolves attacks.",
             plotEnabled: false,
             plotLabel: "Await Next Turn",
+            stepEnabled: true,
             stepLabel: "Resolve Attacks",
           };
         }
@@ -437,6 +450,7 @@
           guide: "Unknown phase",
           plotEnabled: false,
           plotLabel: "Submit Plots",
+          stepEnabled: true,
           stepLabel: "Step",
         };
       }
@@ -452,7 +466,13 @@
         if (result.status === "input_recorded") {
           return `Stored ${result.unit} plot ${result.plot.heading}:${result.plot.speed}`;
         }
+        if (result.status === "terminal") {
+          return result.terminal.text;
+        }
         if (result.status === "resolved") {
+          if (result.terminal) {
+            return result.terminal.text;
+          }
           if (result.phase === "plot_heading_speed") {
             return "Orders locked. Next: resolve movement.";
           }
@@ -487,7 +507,7 @@
       async function refresh() {
         const data = await request("/api/state");
         applySnapshot(data.snapshot);
-        statusEl.textContent = "Ready";
+        statusEl.textContent = data.snapshot.terminal ? data.snapshot.terminal.text : "Ready";
       }
 
       async function applyAction(path, body = {}) {
@@ -501,6 +521,10 @@
 
       async function submitPlots() {
         if (!snapshot) {
+          return;
+        }
+        if (snapshot.terminal) {
+          statusEl.textContent = snapshot.terminal.text;
           return;
         }
         if (snapshot.turn.phase !== "plot_heading_speed") {
@@ -544,13 +568,14 @@
       function applySnapshot(nextSnapshot) {
         snapshot = nextSnapshot;
         rebuildDrafts(snapshot.entities);
-        const config = phaseConfig(snapshot.turn.phase);
+        const config = phaseConfig(snapshot.turn.phase, snapshot.terminal);
         titleEl.textContent = snapshot.title;
         turnMetaEl.textContent = `Turn ${snapshot.turn.number}`;
         phaseMetaEl.textContent = config.label;
         phaseGuideEl.textContent = config.guide;
         plotButton.disabled = !config.plotEnabled;
         plotButton.textContent = config.plotLabel;
+        stepButton.disabled = !config.stepEnabled;
         stepButton.textContent = config.stepLabel;
         renderUnits(snapshot.entities);
         renderEvents(snapshot.recent_events);
@@ -566,7 +591,7 @@
 
       function renderUnits(entities) {
         unitsEl.innerHTML = "";
-        const plotEditable = snapshot && snapshot.turn.phase === "plot_heading_speed";
+        const plotEditable = snapshot && snapshot.turn.phase === "plot_heading_speed" && !snapshot.terminal;
         for (const entity of entities) {
           const card = document.createElement("article");
           card.className = "unit-card";
