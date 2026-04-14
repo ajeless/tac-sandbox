@@ -5,6 +5,7 @@ from pathlib import Path
 import tomllib
 
 from .phases import PHASE_HANDLERS, PhaseHandler
+from .rules import in_bounds
 
 SUPPORTED_PHASES = set(PHASE_HANDLERS)
 
@@ -14,9 +15,10 @@ def load_scenario(path: str | Path) -> dict:
     with scenario_path.open("rb") as handle:
         raw = tomllib.load(handle)
 
-    space = raw.get("space", {})
+    space = _load_space(raw.get("space", {}))
     if space.get("model") != "hex":
         raise ValueError("v0 only supports space.model = 'hex'")
+    heading = _load_heading(raw.get("heading", {}), space)
 
     phases = raw.get("turn", {}).get("phases", [])
     if not phases:
@@ -32,6 +34,14 @@ def load_scenario(path: str | Path) -> dict:
         unit_id = raw_unit["id"]
         if unit_id in units:
             raise ValueError(f"duplicate unit id: {unit_id}")
+        speed = int(raw_unit["speed"])
+        max_speed = int(raw_unit.get("max_speed", raw_unit["speed"]))
+        if speed < 0:
+            raise ValueError(f"{unit_id} speed must be non-negative")
+        if max_speed < 0:
+            raise ValueError(f"{unit_id} max_speed must be non-negative")
+        if speed > max_speed:
+            raise ValueError(f"{unit_id} speed must be less than or equal to max_speed")
         units[unit_id] = {
             "id": unit_id,
             "side": raw_unit["side"],
@@ -39,13 +49,16 @@ def load_scenario(path: str | Path) -> dict:
             "facing": int(raw_unit["facing"]),
             "hull": int(raw_unit["hull"]),
             "shield": int(raw_unit["shield"]),
-            "speed": int(raw_unit["speed"]),
+            "speed": speed,
+            "max_speed": max_speed,
             "weapon": {
                 "arc": raw_unit["weapon"]["arc"],
                 "range": int(raw_unit["weapon"]["range"]),
                 "damage": int(raw_unit["weapon"]["damage"]),
             },
         }
+        if not in_bounds(units[unit_id]["at"], space):
+            raise ValueError(f"{unit_id} starts outside the play surface")
         unit_order.append(unit_id)
 
     if not units:
@@ -54,13 +67,76 @@ def load_scenario(path: str | Path) -> dict:
     return {
         "path": str(scenario_path),
         "title": raw.get("title", scenario_path.stem),
-        "space": {
-            "model": space["model"],
-            "bounds": list(space["bounds"]),
-        },
+        "space": space,
+        "heading": heading,
         "turn": {"phases": list(phases)},
         "unit_order": unit_order,
         "units": units,
+    }
+
+
+def _load_space(raw_space: dict) -> dict:
+    if raw_space.get("model") != "hex":
+        return {"model": raw_space.get("model")}
+
+    orientation = raw_space.get("orientation", "flat_top")
+    if orientation not in {"flat_top", "pointy_top"}:
+        raise ValueError("space.orientation must be 'flat_top' or 'pointy_top'")
+
+    footprint = raw_space.get("footprint")
+
+    if footprint == "rect" or ("bounds" in raw_space and footprint is None):
+        return {
+            "model": "hex",
+            "orientation": orientation,
+            "footprint": "rect",
+            "bounds": list(raw_space["bounds"]),
+        }
+
+    if footprint == "radius" or ("radius" in raw_space and footprint is None):
+        radius = int(raw_space["radius"])
+        if radius < 0:
+            raise ValueError("space.radius must be non-negative")
+        center = list(raw_space.get("center", [0, 0]))
+        if len(center) != 2:
+            raise ValueError("space.center must contain exactly two coordinates")
+        return {
+            "model": "hex",
+            "orientation": orientation,
+            "footprint": "radius",
+            "center": center,
+            "radius": radius,
+        }
+
+    raise ValueError("space must define a supported footprint and its geometry")
+
+
+def _load_heading(raw_heading: dict, space: dict) -> dict:
+    model = raw_heading.get("model", "discrete_6")
+    if model != "discrete_6":
+        raise ValueError("v0 only supports heading.model = 'discrete_6'")
+
+    rotation = raw_heading.get("rotation", "clockwise")
+    if rotation != "clockwise":
+        raise ValueError("v0 only supports heading.rotation = 'clockwise'")
+
+    default_zero = "north" if space["orientation"] == "flat_top" else "east"
+    zero = raw_heading.get("zero", default_zero)
+
+    allowed_zero = {
+        "flat_top": {"north"},
+        "pointy_top": {"east"},
+    }
+    if zero not in allowed_zero[space["orientation"]]:
+        allowed = ", ".join(sorted(allowed_zero[space["orientation"]]))
+        raise ValueError(
+            f"space.orientation = '{space['orientation']}' requires heading.zero in {{{allowed}}}"
+        )
+
+    return {
+        "model": model,
+        "zero": zero,
+        "rotation": rotation,
     }
 
 

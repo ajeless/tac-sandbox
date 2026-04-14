@@ -1,4 +1,2 @@
-.venv/
+.run/
 __pycache__/
-*.pyc
-

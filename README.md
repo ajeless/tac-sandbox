@@ -11,8 +11,19 @@ Run the current spike with:
 uv run python -m tac_sandbox.cli scenarios/ship_duel.toml
 ```
 
-Minimal browser host:
+Managed browser host:
 
 ```bash
-uv run python -m tac_sandbox.web_host scenarios/ship_duel.toml --port 8000
+./scripts/start.sh
+./scripts/stop.sh
 ```
+
+Windows PowerShell:
+
+```powershell
+./scripts/start.ps1
+./scripts/stop.ps1
+```
+
+The managed host defaults to `scenarios/ship_duel.toml` on `127.0.0.1:8000`.
+It tracks state and logs under `.run/`.

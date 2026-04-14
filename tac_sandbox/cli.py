@@ -95,7 +95,7 @@ def _show_session(scenario: dict, session: dict) -> None:
         print(
             f"{unit_id}: side={unit['side']} at={tuple(unit['at'])} "
             f"facing={unit['facing']} hull={unit['hull']} shield={unit['shield']} "
-            f"speed={unit['speed']} status={status}"
+            f"speed={unit['speed']} max_speed={unit['max_speed']} status={status}"
         )
 
     plots = session["phase_data"].get("plots", {})

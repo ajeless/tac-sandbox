@@ -56,6 +56,18 @@
         background: rgba(18, 35, 56, 0.95);
       }
 
+      button:disabled,
+      input:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
+
+      button:disabled:hover {
+        transform: none;
+        border-color: rgba(145, 170, 196, 0.22);
+        background: rgba(13, 27, 44, 0.85);
+      }
+
       input {
         width: 100%;
         padding: 10px 12px;
@@ -74,7 +86,7 @@
         height: 100vh;
         padding: 18px;
         display: grid;
-        grid-template-rows: minmax(160px, 20vh) minmax(0, 1fr);
+        grid-template-rows: minmax(240px, 30vh) minmax(0, 1fr);
         gap: 18px;
         overflow: hidden;
       }
@@ -146,6 +158,8 @@
         background: rgba(8, 16, 29, 0.9);
         color: var(--muted);
         font-size: 0.9rem;
+        line-height: 1.35;
+        overflow-y: auto;
         white-space: pre-wrap;
       }
 
@@ -160,8 +174,15 @@
       .event-section {
         min-height: 0;
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
         gap: 10px;
+      }
+
+      .unit-section {
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .event-section {
+        grid-template-rows: auto auto auto minmax(0, 1fr);
       }
 
       .unit-grid {
@@ -258,6 +279,7 @@
         padding: 12px 14px;
         color: var(--muted);
         font-size: 0.88rem;
+        line-height: 1.35;
       }
 
       .board-panel {
@@ -309,6 +331,7 @@
             <h1 class="title" id="title">tac-sandbox</h1>
             <div class="subhead" id="turn-meta">Loading...</div>
             <div class="phase-chip" id="phase-meta">Phase</div>
+            <div class="subhead" id="phase-guide">Loading flow...</div>
           </div>
           <div class="action-row">
             <button id="plot-button" type="button">Submit Plots</button>
@@ -356,6 +379,7 @@
       const titleEl = document.getElementById("title");
       const turnMetaEl = document.getElementById("turn-meta");
       const phaseMetaEl = document.getElementById("phase-meta");
+      const phaseGuideEl = document.getElementById("phase-guide");
       const statusEl = document.getElementById("status");
       const unitsEl = document.getElementById("units");
       const eventsEl = document.getElementById("events");
@@ -368,7 +392,7 @@
       let plotDrafts = {};
 
       function defaultDraft(entity) {
-        const plot = entity.plot || { heading: entity.facing, speed: 0 };
+        const plot = entity.plot || { heading: entity.facing, speed: entity.stats.speed };
         return { heading: plot.heading, speed: plot.speed };
       }
 
@@ -380,18 +404,64 @@
         plotDrafts = nextDrafts;
       }
 
+      function phaseConfig(phase) {
+        if (phase === "plot_heading_speed") {
+          return {
+            label: "Plot Orders",
+            guide: "Set heading and speed for each active ship, then lock orders.",
+            plotEnabled: true,
+            plotLabel: "Submit Plots",
+            stepLabel: "Lock Orders",
+          };
+        }
+        if (phase === "resolve_plotted_move") {
+          return {
+            label: "Resolve Movement",
+            guide: "Orders are locked. The next step resolves movement.",
+            plotEnabled: false,
+            plotLabel: "Plots Locked",
+            stepLabel: "Resolve Movement",
+          };
+        }
+        if (phase === "resolve_attacks") {
+          return {
+            label: "Resolve Attacks",
+            guide: "Movement is complete. The next step resolves attacks.",
+            plotEnabled: false,
+            plotLabel: "Await Next Turn",
+            stepLabel: "Resolve Attacks",
+          };
+        }
+        return {
+          label: phase,
+          guide: "Unknown phase",
+          plotEnabled: false,
+          plotLabel: "Submit Plots",
+          stepLabel: "Step",
+        };
+      }
+
       function statusText(result) {
         if (!result) {
           return "Ready";
         }
         if (result.status === "awaiting_input") {
           const missing = (result.missing_units || []).join(", ");
-          return missing ? `Awaiting input: ${missing}` : "Awaiting input";
+          return missing ? `Missing plots: ${missing}` : "Missing plots";
         }
         if (result.status === "input_recorded") {
-          return `Stored plot for ${result.unit}`;
+          return `Stored ${result.unit} plot ${result.plot.heading}:${result.plot.speed}`;
         }
         if (result.status === "resolved") {
+          if (result.phase === "plot_heading_speed") {
+            return "Orders locked. Next: resolve movement.";
+          }
+          if (result.phase === "resolve_plotted_move") {
+            return "Movement resolved. Next: resolve attacks.";
+          }
+          if (result.phase === "resolve_attacks") {
+            return "Attacks resolved. Next: enter new plots.";
+          }
           return `Resolved ${result.phase} -> ${result.next_phase}`;
         }
         if (result.status === "reset") {
@@ -433,10 +503,15 @@
         if (!snapshot) {
           return;
         }
+        if (snapshot.turn.phase !== "plot_heading_speed") {
+          statusEl.textContent = "Plots can only be submitted during Plot Orders.";
+          return;
+        }
 
         const activeEntities = snapshot.entities.filter((entity) => !entity.destroyed);
         let latestSnapshot = snapshot;
-        const messages = [];
+        const recordedUnits = [];
+        const errors = [];
 
         for (const entity of activeEntities) {
           const draft = plotDrafts[entity.id] || defaultDraft(entity);
@@ -449,19 +524,34 @@
             }),
           });
           latestSnapshot = data.snapshot;
-          messages.push(statusText(data.result));
+          if (data.result.status === "input_recorded") {
+            recordedUnits.push(data.result.unit);
+            continue;
+          }
+          errors.push(statusText(data.result));
         }
 
         applySnapshot(latestSnapshot);
-        statusEl.textContent = messages.join("\n") || "No active units";
+        if (errors.length > 0) {
+          statusEl.textContent = errors.join("\n");
+          return;
+        }
+        statusEl.textContent = recordedUnits.length > 0
+          ? `Stored plots for ${recordedUnits.join(", ")}. Next: lock orders.`
+          : "No active units";
       }
 
       function applySnapshot(nextSnapshot) {
         snapshot = nextSnapshot;
         rebuildDrafts(snapshot.entities);
+        const config = phaseConfig(snapshot.turn.phase);
         titleEl.textContent = snapshot.title;
         turnMetaEl.textContent = `Turn ${snapshot.turn.number}`;
-        phaseMetaEl.textContent = snapshot.turn.phase;
+        phaseMetaEl.textContent = config.label;
+        phaseGuideEl.textContent = config.guide;
+        plotButton.disabled = !config.plotEnabled;
+        plotButton.textContent = config.plotLabel;
+        stepButton.textContent = config.stepLabel;
         renderUnits(snapshot.entities);
         renderEvents(snapshot.recent_events);
         renderBoard(snapshot);
@@ -476,6 +566,7 @@
 
       function renderUnits(entities) {
         unitsEl.innerHTML = "";
+        const plotEditable = snapshot && snapshot.turn.phase === "plot_heading_speed";
         for (const entity of entities) {
           const card = document.createElement("article");
           card.className = "unit-card";
@@ -495,18 +586,18 @@
                 </div>
                 <div class="unit-meta">
                   <div>hex ${entity.at[0]},${entity.at[1]} | facing ${entity.facing}</div>
-                  <div>hull ${entity.stats.hull} | shield ${entity.stats.shield} | max speed ${entity.stats.speed}</div>
+                  <div>hull ${entity.stats.hull} | shield ${entity.stats.shield} | speed ${entity.stats.speed} / max ${entity.stats.max_speed}</div>
                   <div>${plotText}</div>
                 </div>
               </div>
               <div class="plot-stack">
                 <label class="plot-field">
                   Heading
-                  <input data-unit="${entity.id}" data-field="heading" type="number" min="0" max="5" value="${draft.heading}" ${entity.destroyed ? "disabled" : ""}>
+                  <input data-unit="${entity.id}" data-field="heading" type="number" min="0" max="5" value="${draft.heading}" ${entity.destroyed || !plotEditable ? "disabled" : ""}>
                 </label>
                 <label class="plot-field">
                   Speed
-                  <input data-unit="${entity.id}" data-field="speed" type="number" min="0" max="${entity.stats.speed}" value="${draft.speed}" ${entity.destroyed ? "disabled" : ""}>
+                  <input data-unit="${entity.id}" data-field="speed" type="number" min="0" max="${entity.stats.max_speed}" value="${draft.speed}" ${entity.destroyed || !plotEditable ? "disabled" : ""}>
                 </label>
               </div>
             </div>
@@ -543,49 +634,57 @@
 
       function renderBoard(snapshot) {
         const size = 90;
-        const margin = 54;
+        const padding = size + 28;
         const viewportScale = 1.2;
         const shipScale = 1.5;
-        const [widthCount, heightCount] = snapshot.board.bounds;
-        const hexes = [];
-        let maxX = 0;
-        let maxY = 0;
+        const hexes = boardHexes(snapshot.board).map(({ q, r }) => {
+          const [x, y] = axialToPixel(snapshot.board, q, r, size);
+          return { q, r, x, y };
+        });
 
-        for (let q = 0; q < widthCount; q += 1) {
-          for (let r = 0; r < heightCount; r += 1) {
-            const [x, y] = axialToPixel(q, r, size, margin);
-            hexes.push({ q, r, x, y });
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-          }
+        if (hexes.length === 0) {
+          board.innerHTML = "";
+          return;
         }
 
-        const contentWidth = maxX + margin;
-        const contentHeight = maxY + margin;
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        for (const hex of hexes) {
+          minX = Math.min(minX, hex.x);
+          minY = Math.min(minY, hex.y);
+          maxX = Math.max(maxX, hex.x);
+          maxY = Math.max(maxY, hex.y);
+        }
+
+        const contentWidth = (maxX - minX) + (padding * 2);
+        const contentHeight = (maxY - minY) + (padding * 2);
         const viewportWidth = contentWidth * viewportScale;
         const viewportHeight = contentHeight * viewportScale;
         const offsetX = (viewportWidth - contentWidth) / 2;
         const offsetY = (viewportHeight - contentHeight) / 2;
+        const viewX = minX - padding - offsetX;
+        const viewY = minY - padding - offsetY;
 
-        board.setAttribute("viewBox", `0 0 ${viewportWidth} ${viewportHeight}`);
+        board.setAttribute("viewBox", `${viewX} ${viewY} ${viewportWidth} ${viewportHeight}`);
         board.innerHTML = "";
 
         for (const hex of hexes) {
-          const renderX = hex.x + offsetX;
-          const renderY = hex.y + offsetY;
           const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-          polygon.setAttribute("points", hexPoints(renderX, renderY, size - 1));
+          polygon.setAttribute("points", hexPoints(snapshot.board, hex.x, hex.y, size - 1));
           polygon.setAttribute("fill", "var(--grid-fill)");
           polygon.setAttribute("stroke", "var(--grid-stroke)");
           polygon.setAttribute("stroke-width", "1.4");
           board.appendChild(polygon);
 
           const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          label.setAttribute("x", renderX);
-          label.setAttribute("y", renderY - 18);
+          label.setAttribute("x", hex.x);
+          label.setAttribute("y", hex.y - 18);
           label.setAttribute("text-anchor", "middle");
           label.setAttribute("dominant-baseline", "middle");
-          label.setAttribute("font-size", "22");
+          label.setAttribute("font-size", "17");
           label.setAttribute("font-weight", "600");
           label.setAttribute("fill", "rgba(122, 142, 166, 0.46)");
           label.textContent = `${hex.q},${hex.r}`;
@@ -593,11 +692,9 @@
         }
 
         for (const entity of snapshot.entities) {
-          const [rawX, rawY] = axialToPixel(entity.at[0], entity.at[1], size, margin);
-          const x = rawX + offsetX;
-          const y = rawY + offsetY;
+          const [x, y] = axialToPixel(snapshot.board, entity.at[0], entity.at[1], size);
           const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-          group.setAttribute("transform", `translate(${x} ${y}) rotate(${-60 * entity.facing}) scale(${shipScale})`);
+          group.setAttribute("transform", `translate(${x} ${y}) rotate(${headingAngle(snapshot.heading, entity.facing)}) scale(${shipScale})`);
 
           const hull = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
           hull.setAttribute("points", "-13.5,8.4375 15.1875,0 -13.5,-8.4375");
@@ -614,7 +711,7 @@
           badge.setAttribute("text-anchor", "middle");
           badge.setAttribute("font-size", "25.3125");
           badge.setAttribute("fill", "#f4f7fb");
-          badge.textContent = `${entity.id} h${entity.stats.hull}/s${entity.stats.shield}`;
+          badge.textContent = `${entity.id} h${entity.stats.hull}/s${entity.stats.shield}/spd${entity.stats.speed}`;
           board.appendChild(badge);
 
           if (entity.plot) {
@@ -630,17 +727,71 @@
         }
       }
 
-      function axialToPixel(q, r, size, margin) {
+      function boardHexes(board) {
+        if (board.footprint === "radius") {
+          const [centerQ, centerR] = board.center;
+          const hexes = [];
+          for (let q = centerQ - board.radius; q <= centerQ + board.radius; q += 1) {
+            for (let r = centerR - board.radius; r <= centerR + board.radius; r += 1) {
+              if (hexDistance([q, r], [centerQ, centerR]) <= board.radius) {
+                hexes.push({ q, r });
+              }
+            }
+          }
+          return hexes;
+        }
+
+        const [widthCount, heightCount] = board.bounds;
+        const hexes = [];
+        for (let q = 0; q < widthCount; q += 1) {
+          for (let r = 0; r < heightCount; r += 1) {
+            hexes.push({ q, r });
+          }
+        }
+        return hexes;
+      }
+
+      function axialToPixel(board, q, r, size) {
+        if (board.orientation === "pointy_top") {
+          return [
+            Math.sqrt(3) * size * (q + r / 2),
+            1.5 * size * r,
+          ];
+        }
         return [
-          margin + Math.sqrt(3) * size * (q + r / 2),
-          margin + 1.5 * size * r,
+          1.5 * size * q,
+          Math.sqrt(3) * size * (r + q / 2),
         ];
       }
 
-      function hexPoints(x, y, size) {
+      function hexDistance(a, b) {
+        const [aq, ar] = a;
+        const [bq, br] = b;
+        const ax = aq;
+        const ay = -aq - ar;
+        const az = ar;
+        const bx = bq;
+        const by = -bq - br;
+        const bz = br;
+        return Math.max(
+          Math.abs(ax - bx),
+          Math.abs(ay - by),
+          Math.abs(az - bz),
+        );
+      }
+
+      function headingAngle(headingConfig, heading) {
+        if (headingConfig.zero === "east") {
+          return 60 * heading;
+        }
+        return -90 + (60 * heading);
+      }
+
+      function hexPoints(board, x, y, size) {
         const points = [];
         for (let index = 0; index < 6; index += 1) {
-          const angle = ((60 * index) - 30) * Math.PI / 180;
+          const startAngle = board.orientation === "pointy_top" ? -30 : 0;
+          const angle = (startAngle + (60 * index)) * Math.PI / 180;
           points.push(`${x + (Math.cos(angle) * size)},${y + (Math.sin(angle) * size)}`);
         }
         return points.join(" ");

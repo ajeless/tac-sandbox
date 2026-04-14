@@ -49,7 +49,7 @@ class PlotHeadingSpeedPhase(PhaseHandler):
         if unit["destroyed"]:
             return {"status": "rejected", "errors": [f"{unit_id} is destroyed"]}
 
-        errors = validate_plot(unit, heading, speed)
+        errors = validate_plot(unit, scenario["heading"], heading, speed)
         if errors:
             return {"status": "rejected", "phase": session["phase"], "errors": errors}
 
@@ -73,7 +73,14 @@ class PlotHeadingSpeedPhase(PhaseHandler):
             if unit_id not in plots:
                 missing.append(unit_id)
                 continue
-            errors.extend(validate_plot(session["units"][unit_id], **plots[unit_id]))
+            errors.extend(
+                validate_plot(
+                    session["units"][unit_id],
+                    scenario["heading"],
+                    plots[unit_id]["heading"],
+                    plots[unit_id]["speed"],
+                )
+            )
 
         if missing or errors:
             return {"missing_units": missing, "errors": errors}
@@ -101,69 +108,36 @@ class ResolvePlottedMovePhase(PhaseHandler):
 
     def resolve(self, scenario: dict, session: dict) -> list[dict]:
         plots = session["phase_data"].get("plots", {})
-        bounds = scenario["space"]["bounds"]
         events = []
-
-        desired = {}
-        origins = {}
         for unit_id in active_unit_ids(scenario, session):
             unit = session["units"][unit_id]
             plot = plots[unit_id]
-            origins[unit_id] = list(unit["at"])
+            origin = list(unit["at"])
             unit["facing"] = plot["heading"]
-            desired[unit_id] = walk_hex(unit["at"], plot["heading"], plot["speed"])
-
-        pre_collision = {}
-        for unit_id, destination in desired.items():
-            if in_bounds(destination, bounds):
-                pre_collision[unit_id] = destination
-            else:
-                pre_collision[unit_id] = origins[unit_id]
-                events.append(
-                    event(
-                        session,
-                        "move_blocked_bounds",
-                        unit=unit_id,
-                        from_hex=origins[unit_id],
-                        attempted=destination,
-                    )
-                )
-
-        occupancy = defaultdict(list)
-        for unit_id, destination in pre_collision.items():
-            occupancy[tuple(destination)].append(unit_id)
-
-        conflicts = {
-            unit_id
-            for unit_ids in occupancy.values()
-            if len(unit_ids) > 1
-            for unit_id in unit_ids
-        }
-
-        for unit_id in conflicts:
-            events.append(
-                event(
-                    session,
-                    "move_blocked_collision",
-                    unit=unit_id,
-                    from_hex=origins[unit_id],
-                    attempted=pre_collision[unit_id],
-                )
-            )
-
-        for unit_id in active_unit_ids(scenario, session):
-            final_hex = origins[unit_id] if unit_id in conflicts else pre_collision[unit_id]
-            session["units"][unit_id]["at"] = list(final_hex)
-            if final_hex != origins[unit_id]:
+            unit["speed"] = plot["speed"]
+            destination = walk_hex(origin, scenario["heading"], plot["heading"], plot["speed"])
+            if in_bounds(destination, scenario["space"]):
+                unit["at"] = list(destination)
                 events.append(
                     event(
                         session,
                         "moved",
                         unit=unit_id,
-                        from_hex=origins[unit_id],
-                        to_hex=final_hex,
+                        from_hex=origin,
+                        to_hex=destination,
                     )
                 )
+                continue
+
+            events.append(
+                event(
+                    session,
+                    "move_blocked_bounds",
+                    unit=unit_id,
+                    from_hex=origin,
+                    attempted=destination,
+                )
+            )
 
         return events
 
@@ -210,7 +184,7 @@ class ResolveAttacksPhase(PhaseHandler):
                 )
                 continue
 
-            direction = approximate_direction(attacker["at"], target["at"])
+            direction = approximate_direction(scenario["heading"], attacker["at"], target["at"])
             if attacker["weapon"]["arc"] == "front" and not is_forward_arc(
                 attacker["facing"], direction
             ):

@@ -25,6 +25,7 @@ def present_session(
                     "hull": unit["hull"],
                     "shield": unit["shield"],
                     "speed": unit["speed"],
+                    "max_speed": unit["max_speed"],
                 },
                 "weapon": deepcopy(unit["weapon"]),
                 "plot": deepcopy(plots.get(unit_id)),
@@ -43,10 +44,8 @@ def present_session(
 
     return {
         "title": scenario["title"],
-        "board": {
-            "model": scenario["space"]["model"],
-            "bounds": list(scenario["space"]["bounds"]),
-        },
+        "board": deepcopy(scenario["space"]),
+        "heading": deepcopy(scenario["heading"]),
         "turn": {"number": session["turn"], "phase": session["phase"]},
         "entities": entities,
         "recent_events": recent_events,

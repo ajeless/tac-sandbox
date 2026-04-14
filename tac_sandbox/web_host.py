@@ -13,6 +13,10 @@ from .presentation import present_session
 STATIC_DIR = Path(__file__).with_name("static")
 
 
+class BadRequest(Exception):
+    pass
+
+
 class BrowserHost:
     def __init__(self, scenario_path: Path) -> None:
         self.scenario = load_scenario(scenario_path)
@@ -77,9 +81,10 @@ def _build_handler(app: BrowserHost) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
-            data = self._read_json()
-
             if path == "/api/plot":
+                data = self._read_json_object()
+                if data is None:
+                    return
                 result = app.plot(data)
                 self._send_json({"result": result, "snapshot": app.snapshot()})
                 return
@@ -97,12 +102,25 @@ def _build_handler(app: BrowserHost) -> type[BaseHTTPRequestHandler]:
         def log_message(self, format: str, *args: object) -> None:
             return
 
+        def _read_json_object(self) -> dict | None:
+            try:
+                return self._read_json()
+            except BadRequest as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return None
+
         def _read_json(self) -> dict:
             length = int(self.headers.get("Content-Length", "0"))
             if length == 0:
                 return {}
             raw = self.rfile.read(length).decode("utf-8")
-            return json.loads(raw)
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise BadRequest(f"invalid JSON: {exc.msg}") from exc
+            if not isinstance(data, dict):
+                raise BadRequest("request body must be a JSON object")
+            return data
 
         def _send_html(self, body: str, status: int = 200) -> None:
             encoded = body.encode("utf-8")
