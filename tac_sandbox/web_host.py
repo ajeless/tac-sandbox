@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .engine import advance, load_scenario, start_session, submit_input
+from .engine import advance, load_scenario, scenario_from_data, start_session, submit_input
 from .presentation import present_session
 
 
@@ -19,7 +19,8 @@ class BadRequest(Exception):
 
 class BrowserHost:
     def __init__(self, scenario_path: Path) -> None:
-        self.scenario = load_scenario(scenario_path)
+        self.scenario_path = scenario_path
+        self.scenario = load_scenario(self.scenario_path)
         self.session = start_session(self.scenario)
 
     def snapshot(self) -> dict:
@@ -28,6 +29,16 @@ class BrowserHost:
     def reset(self) -> dict:
         self.session = start_session(self.scenario)
         return {"status": "reset"}
+
+    def apply_config(self, data: dict) -> dict:
+        try:
+            scenario = scenario_from_data(data, source_path=self.scenario_path)
+        except ValueError as exc:
+            return {"status": "rejected", "errors": [str(exc)]}
+
+        self.scenario = scenario
+        self.session = start_session(self.scenario)
+        return {"status": "scenario_applied"}
 
     def step(self) -> dict:
         return advance(self.scenario, self.session)
@@ -94,6 +105,13 @@ def _build_handler(app: BrowserHost) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/api/reset":
                 result = app.reset()
+                self._send_json({"result": result, "snapshot": app.snapshot()})
+                return
+            if path == "/api/apply_scenario":
+                data = self._read_json_object()
+                if data is None:
+                    return
+                result = app.apply_config(data)
                 self._send_json({"result": result, "snapshot": app.snapshot()})
                 return
 

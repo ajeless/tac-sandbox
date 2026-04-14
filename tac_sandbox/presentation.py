@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from .engine import scenario_to_config
 from .session_state import terminal_state
 
 
@@ -50,11 +51,17 @@ def present_session(
         "title": scenario["title"],
         "board": deepcopy(scenario["space"]),
         "heading": deepcopy(scenario["heading"]),
+        "presentation": deepcopy(scenario["presentation"]),
         "terminal": terminal_state(scenario, session),
         "turn": {"number": session["turn"], "phase": session["phase"]},
         "entities": entities,
         "recent_events": recent_events,
+        "config": present_scenario_config(scenario),
     }
+
+
+def present_scenario_config(scenario: dict) -> dict:
+    return scenario_to_config(scenario)
 
 
 def describe_event(event: dict) -> str:

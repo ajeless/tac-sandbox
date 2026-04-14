@@ -294,14 +294,77 @@
         overflow: hidden;
       }
 
+      .board-layout {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.95fr);
+        gap: 16px;
+      }
+
+      .inspector-panel {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 12px;
+        padding: 14px;
+        border-radius: 18px;
+        background: rgba(8, 16, 29, 0.92);
+        border: 1px solid rgba(145, 170, 196, 0.14);
+      }
+
+      .inspector-note {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(12, 26, 43, 0.88);
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+
+      .inspector-body {
+        min-height: 0;
+        overflow-y: auto;
+        display: grid;
+        gap: 12px;
+        padding-right: 4px;
+      }
+
+      .inspector-section,
+      .inspector-unit {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(12, 26, 43, 0.72);
+        border: 1px solid rgba(145, 170, 196, 0.14);
+      }
+
+      .inspector-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+      }
+
+      .phase-list {
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+
       #board {
         width: 100%;
         height: 100%;
-        min-height: 0;
+        min-height: 520px;
         border-radius: 18px;
         background:
           radial-gradient(circle at center, rgba(26, 54, 86, 0.35), transparent 55%),
           linear-gradient(180deg, rgba(6, 15, 27, 0.96), rgba(9, 19, 32, 0.98));
+      }
+
+      @media (max-width: 1280px) {
+        .board-layout {
+          grid-template-columns: 1fr;
+        }
       }
 
       @media (max-width: 980px) {
@@ -322,6 +385,10 @@
 
         .unit-layout {
           gap: 10px;
+        }
+
+        #board {
+          min-height: 380px;
         }
       }
     </style>
@@ -371,9 +438,25 @@
       <section class="board-panel card">
         <div class="board-header">
           <div class="title" style="font-size:1rem;">Board</div>
-          <div class="subhead">Renderer consumes snapshot state only</div>
+          <div class="subhead">Renderer and inspector consume snapshot state only</div>
         </div>
-        <svg id="board" viewBox="0 0 800 600" aria-label="tactical board"></svg>
+        <div class="board-layout">
+          <svg id="board" viewBox="0 0 800 600" aria-label="tactical board"></svg>
+
+          <aside class="inspector-panel">
+            <div class="section-header">
+              <div class="title" style="font-size:1rem;">Scenario Inspector</div>
+              <div class="subhead">Runtime overrides only</div>
+            </div>
+            <div class="inspector-note" id="config-meta">
+              Loading scenario config...
+            </div>
+            <div class="inspector-body" id="inspector"></div>
+            <div class="action-row">
+              <button id="apply-scenario-button" type="button">Apply + Restart</button>
+            </div>
+          </aside>
+        </div>
       </section>
     </div>
 
@@ -390,6 +473,9 @@
       const stepButton = document.getElementById("step-button");
       const resetButton = document.getElementById("reset-button");
       const refreshButton = document.getElementById("refresh-button");
+      const configMetaEl = document.getElementById("config-meta");
+      const inspectorEl = document.getElementById("inspector");
+      const applyScenarioButton = document.getElementById("apply-scenario-button");
 
       let snapshot = null;
       let plotDrafts = {};
@@ -513,6 +599,9 @@
         if (result.status === "reset") {
           return "Session reset";
         }
+        if (result.status === "scenario_applied") {
+          return "Scenario applied. Session restarted from inspector values.";
+        }
         if (result.status === "rejected") {
           return (result.errors || []).join("\n") || "Input rejected";
         }
@@ -540,6 +629,20 @@
         const data = await request(path, {
           method: "POST",
           body: JSON.stringify(body),
+        });
+        applySnapshot(data.snapshot);
+        statusEl.textContent = statusText(data.result);
+      }
+
+      async function applyScenarioConfig() {
+        if (!snapshot) {
+          return;
+        }
+
+        const config = collectScenarioConfig();
+        const data = await request("/api/apply_scenario", {
+          method: "POST",
+          body: JSON.stringify(config),
         });
         applySnapshot(data.snapshot);
         statusEl.textContent = statusText(data.result);
@@ -616,7 +719,223 @@
         stepButton.textContent = config.stepLabel;
         renderUnits(snapshot.entities);
         renderEvents(snapshot.recent_events);
+        renderInspector(snapshot.config);
         renderBoard(snapshot);
+      }
+
+      function collectScenarioConfig() {
+        if (!snapshot) {
+          return null;
+        }
+
+        const config = cloneConfig(snapshot.config);
+        for (const control of inspectorEl.querySelectorAll("[data-config]")) {
+          setByPath(config, control.dataset.config, readConfigValue(control));
+        }
+        return config;
+      }
+
+      function readConfigValue(control) {
+        if (control.type === "number") {
+          if (control.value.trim() === "") {
+            throw new Error(`${control.dataset.config} requires a number`);
+          }
+          const value = Number(control.value);
+          if (control.step === "1" && !Number.isInteger(value)) {
+            throw new Error(`${control.dataset.config} must be an integer`);
+          }
+          return value;
+        }
+        return control.value;
+      }
+
+      function renderInspector(config) {
+        const space = config.space || {};
+        const center = Array.isArray(space.center) ? space.center : [0, 0];
+        const bounds = Array.isArray(space.bounds) ? space.bounds : [0, 0];
+        const presentation = config.presentation || {};
+        const phases = ((config.turn || {}).phases || []).join(" -> ");
+
+        configMetaEl.textContent = `Source file: ${config.path}. Apply restarts the session using runtime-only overrides.`;
+        inspectorEl.innerHTML = `
+          <section class="inspector-section">
+            <div class="section-header">
+              <div class="title" style="font-size:0.95rem;">Scenario</div>
+              <div class="subhead">Current authored shape</div>
+            </div>
+            <div class="inspector-grid">
+              <label>
+                Title
+                <input data-config="title" type="text" value="${escapeHtml(config.title || "")}">
+              </label>
+              <label>
+                Unit Scale
+                <input data-config="presentation.unit_scale" type="number" step="0.1" min="0.1" value="${escapeHtml(String(presentation.unit_scale ?? 1.5))}">
+              </label>
+            </div>
+            <div class="phase-list">Turn phases: ${escapeHtml(phases)}</div>
+          </section>
+
+          <section class="inspector-section">
+            <div class="section-header">
+              <div class="title" style="font-size:0.95rem;">Space</div>
+              <div class="subhead">Model and footprint</div>
+            </div>
+            <div class="inspector-grid">
+              <label>
+                Model
+                <input data-config="space.model" type="text" value="${escapeHtml(space.model || "")}">
+              </label>
+              <label>
+                Orientation
+                <input data-config="space.orientation" type="text" value="${escapeHtml(space.orientation || "")}">
+              </label>
+              <label>
+                Footprint
+                <input data-config="space.footprint" type="text" value="${escapeHtml(space.footprint || "")}">
+              </label>
+              <label>
+                Center Q
+                <input data-config="space.center.0" type="number" step="1" value="${escapeHtml(String(center[0] ?? 0))}">
+              </label>
+              <label>
+                Center R
+                <input data-config="space.center.1" type="number" step="1" value="${escapeHtml(String(center[1] ?? 0))}">
+              </label>
+              <label>
+                Radius
+                <input data-config="space.radius" type="number" step="1" min="0" value="${escapeHtml(String(space.radius ?? 0))}">
+              </label>
+              <label>
+                Bounds Q
+                <input data-config="space.bounds.0" type="number" step="1" min="0" value="${escapeHtml(String(bounds[0] ?? 0))}">
+              </label>
+              <label>
+                Bounds R
+                <input data-config="space.bounds.1" type="number" step="1" min="0" value="${escapeHtml(String(bounds[1] ?? 0))}">
+              </label>
+            </div>
+          </section>
+
+          <section class="inspector-section">
+            <div class="section-header">
+              <div class="title" style="font-size:0.95rem;">Heading</div>
+              <div class="subhead">Current engine heading config</div>
+            </div>
+            <div class="inspector-grid">
+              <label>
+                Model
+                <input data-config="heading.model" type="text" value="${escapeHtml((config.heading || {}).model || "")}">
+              </label>
+              <label>
+                Zero
+                <input data-config="heading.zero" type="text" value="${escapeHtml((config.heading || {}).zero || "")}">
+              </label>
+              <label>
+                Rotation
+                <input data-config="heading.rotation" type="text" value="${escapeHtml((config.heading || {}).rotation || "")}">
+              </label>
+            </div>
+          </section>
+
+          ${config.units.map((unit, index) => renderInspectorUnit(unit, index)).join("")}
+        `;
+      }
+
+      function renderInspectorUnit(unit, index) {
+        const weapon = unit.weapon || {};
+        const at = Array.isArray(unit.at) ? unit.at : [0, 0];
+        return `
+          <section class="inspector-unit">
+            <div class="section-header">
+              <div class="title" style="font-size:0.95rem;">Unit ${escapeHtml(unit.id || `#${index + 1}`)}</div>
+              <div class="subhead">Authoring values only</div>
+            </div>
+            <div class="inspector-grid">
+              <label>
+                Id
+                <input data-config="units.${index}.id" type="text" value="${escapeHtml(unit.id || "")}">
+              </label>
+              <label>
+                Side
+                <input data-config="units.${index}.side" type="text" value="${escapeHtml(unit.side || "")}">
+              </label>
+              <label>
+                Q
+                <input data-config="units.${index}.at.0" type="number" step="1" value="${escapeHtml(String(at[0] ?? 0))}">
+              </label>
+              <label>
+                R
+                <input data-config="units.${index}.at.1" type="number" step="1" value="${escapeHtml(String(at[1] ?? 0))}">
+              </label>
+              <label>
+                Facing
+                <input data-config="units.${index}.facing" type="number" step="1" min="0" max="5" value="${escapeHtml(String(unit.facing ?? 0))}">
+              </label>
+              <label>
+                Hull
+                <input data-config="units.${index}.hull" type="number" step="1" min="0" value="${escapeHtml(String(unit.hull ?? 0))}">
+              </label>
+              <label>
+                Shield
+                <input data-config="units.${index}.shield" type="number" step="1" min="0" value="${escapeHtml(String(unit.shield ?? 0))}">
+              </label>
+              <label>
+                Speed
+                <input data-config="units.${index}.speed" type="number" step="1" min="0" value="${escapeHtml(String(unit.speed ?? 0))}">
+              </label>
+              <label>
+                Max Speed
+                <input data-config="units.${index}.max_speed" type="number" step="1" min="0" value="${escapeHtml(String(unit.max_speed ?? 0))}">
+              </label>
+              <label>
+                Weapon Arc
+                <input data-config="units.${index}.weapon.arc" type="text" value="${escapeHtml(weapon.arc || "")}">
+              </label>
+              <label>
+                Weapon Range
+                <input data-config="units.${index}.weapon.range" type="number" step="1" min="0" value="${escapeHtml(String(weapon.range ?? 0))}">
+              </label>
+              <label>
+                Weapon Damage
+                <input data-config="units.${index}.weapon.damage" type="number" step="1" min="0" value="${escapeHtml(String(weapon.damage ?? 0))}">
+              </label>
+            </div>
+          </section>
+        `;
+      }
+
+      function cloneConfig(config) {
+        return JSON.parse(JSON.stringify(config));
+      }
+
+      function setByPath(target, path, value) {
+        const parts = path.split(".");
+        let current = target;
+        for (let index = 0; index < parts.length - 1; index += 1) {
+          const key = accessKey(current, parts[index]);
+          if (current[key] == null) {
+            current[key] = isIndex(parts[index + 1]) ? [] : {};
+          }
+          current = current[key];
+        }
+        current[accessKey(current, parts[parts.length - 1])] = value;
+      }
+
+      function accessKey(target, part) {
+        return Array.isArray(target) ? Number(part) : part;
+      }
+
+      function isIndex(part) {
+        return /^\d+$/.test(part);
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll("\"", "&quot;");
       }
 
       function updateDraft(unitId, field, value) {
@@ -717,7 +1036,7 @@
         const size = 90;
         const padding = size + 28;
         const viewportScale = 1.2;
-        const shipScale = 1.5;
+        const shipScale = snapshot.presentation ? snapshot.presentation.unit_scale : 1.5;
         const hexes = boardHexes(snapshot.board).map(({ q, r }) => {
           const [x, y] = axialToPixel(snapshot.board, q, r, size);
           return { q, r, x, y };
@@ -898,6 +1217,12 @@
 
       refreshButton.addEventListener("click", () => {
         refresh().catch((error) => {
+          statusEl.textContent = String(error);
+        });
+      });
+
+      applyScenarioButton.addEventListener("click", () => {
+        applyScenarioConfig().catch((error) => {
           statusEl.textContent = String(error);
         });
       });

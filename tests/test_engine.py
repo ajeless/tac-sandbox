@@ -23,6 +23,7 @@ class EngineFlowTests(unittest.TestCase):
         self.assertEqual(scenario["heading"]["model"], "discrete_6")
         self.assertEqual(scenario["heading"]["zero"], "north")
         self.assertEqual(scenario["heading"]["rotation"], "clockwise")
+        self.assertEqual(scenario["presentation"]["unit_scale"], 1.5)
 
     def test_advance_requires_all_active_plots(self) -> None:
         scenario, session = fresh_session()

@@ -9,17 +9,27 @@ from .rules import in_bounds
 from .session_state import terminal_state
 
 SUPPORTED_PHASES = set(PHASE_HANDLERS)
+DEFAULT_UNIT_SCALE = 1.5
 
 
 def load_scenario(path: str | Path) -> dict:
     scenario_path = _resolve_scenario_path(Path(path))
     with scenario_path.open("rb") as handle:
         raw = tomllib.load(handle)
+    return scenario_from_data(raw, source_path=scenario_path)
+
+
+def scenario_from_data(raw: dict, *, source_path: str | Path = "runtime_scenario") -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError("scenario config must be an object")
+
+    source = Path(source_path)
 
     space = _load_space(raw.get("space", {}))
     if space.get("model") != "hex":
         raise ValueError("v0 only supports space.model = 'hex'")
     heading = _load_heading(raw.get("heading", {}), space)
+    presentation = _load_presentation(raw.get("presentation", {}))
 
     phases = raw.get("turn", {}).get("phases", [])
     if not phases:
@@ -33,10 +43,12 @@ def load_scenario(path: str | Path) -> dict:
     unit_order = []
     for raw_unit in raw.get("units", []):
         unit_id = raw_unit["id"]
+        if not unit_id:
+            raise ValueError("unit id must not be empty")
         if unit_id in units:
             raise ValueError(f"duplicate unit id: {unit_id}")
-        speed = int(raw_unit["speed"])
-        max_speed = int(raw_unit.get("max_speed", raw_unit["speed"]))
+        speed = _load_int(raw_unit["speed"], f"{unit_id} speed")
+        max_speed = _load_int(raw_unit.get("max_speed", raw_unit["speed"]), f"{unit_id} max_speed")
         if speed < 0:
             raise ValueError(f"{unit_id} speed must be non-negative")
         if max_speed < 0:
@@ -46,16 +58,16 @@ def load_scenario(path: str | Path) -> dict:
         units[unit_id] = {
             "id": unit_id,
             "side": raw_unit["side"],
-            "at": list(raw_unit["at"]),
-            "facing": int(raw_unit["facing"]),
-            "hull": int(raw_unit["hull"]),
-            "shield": int(raw_unit["shield"]),
+            "at": _load_coordinate_pair(raw_unit["at"], f"{unit_id} at"),
+            "facing": _load_int(raw_unit["facing"], f"{unit_id} facing"),
+            "hull": _load_int(raw_unit["hull"], f"{unit_id} hull"),
+            "shield": _load_int(raw_unit["shield"], f"{unit_id} shield"),
             "speed": speed,
             "max_speed": max_speed,
             "weapon": {
                 "arc": raw_unit["weapon"]["arc"],
-                "range": int(raw_unit["weapon"]["range"]),
-                "damage": int(raw_unit["weapon"]["damage"]),
+                "range": _load_int(raw_unit["weapon"]["range"], f"{unit_id} weapon.range"),
+                "damage": _load_int(raw_unit["weapon"]["damage"], f"{unit_id} weapon.damage"),
             },
         }
         if not in_bounds(units[unit_id]["at"], space):
@@ -66,13 +78,29 @@ def load_scenario(path: str | Path) -> dict:
         raise ValueError("scenario.units must contain at least one unit")
 
     return {
-        "path": str(scenario_path),
-        "title": raw.get("title", scenario_path.stem),
+        "path": str(source),
+        "title": raw.get("title", source.stem),
         "space": space,
         "heading": heading,
+        "presentation": presentation,
         "turn": {"phases": list(phases)},
         "unit_order": unit_order,
         "units": units,
+    }
+
+
+def scenario_to_config(scenario: dict) -> dict:
+    return {
+        "title": scenario["title"],
+        "path": scenario["path"],
+        "space": deepcopy(scenario["space"]),
+        "heading": deepcopy(scenario["heading"]),
+        "presentation": deepcopy(scenario["presentation"]),
+        "turn": deepcopy(scenario["turn"]),
+        "units": [
+            deepcopy(scenario["units"][unit_id])
+            for unit_id in scenario["unit_order"]
+        ],
     }
 
 
@@ -91,16 +119,14 @@ def _load_space(raw_space: dict) -> dict:
             "model": "hex",
             "orientation": orientation,
             "footprint": "rect",
-            "bounds": list(raw_space["bounds"]),
+            "bounds": _load_coordinate_pair(raw_space["bounds"], "space.bounds"),
         }
 
     if footprint == "radius" or ("radius" in raw_space and footprint is None):
-        radius = int(raw_space["radius"])
+        radius = _load_int(raw_space["radius"], "space.radius")
         if radius < 0:
             raise ValueError("space.radius must be non-negative")
-        center = list(raw_space.get("center", [0, 0]))
-        if len(center) != 2:
-            raise ValueError("space.center must contain exactly two coordinates")
+        center = _load_coordinate_pair(raw_space.get("center", [0, 0]), "space.center")
         return {
             "model": "hex",
             "orientation": orientation,
@@ -139,6 +165,45 @@ def _load_heading(raw_heading: dict, space: dict) -> dict:
         "zero": zero,
         "rotation": rotation,
     }
+
+
+def _load_presentation(raw_presentation: dict) -> dict:
+    try:
+        unit_scale = float(raw_presentation.get("unit_scale", DEFAULT_UNIT_SCALE))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("presentation.unit_scale must be a number") from exc
+
+    if unit_scale <= 0:
+        raise ValueError("presentation.unit_scale must be greater than 0")
+
+    return {"unit_scale": unit_scale}
+
+
+def _load_int(value: object, label: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be an integer")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{label} must be an integer")
+        return int(value)
+
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be an integer") from exc
+
+
+def _load_coordinate_pair(value: object, label: str) -> list[int]:
+    try:
+        coords = list(value)
+    except TypeError as exc:
+        raise ValueError(f"{label} must contain exactly two coordinates") from exc
+    if len(coords) != 2:
+        raise ValueError(f"{label} must contain exactly two coordinates")
+    return [
+        _load_int(coords[0], f"{label}[0]"),
+        _load_int(coords[1], f"{label}[1]"),
+    ]
 
 
 def _resolve_scenario_path(path: Path) -> Path:
