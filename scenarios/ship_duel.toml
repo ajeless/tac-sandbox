@@ -13,7 +13,7 @@ zero = "north"
 rotation = "clockwise"
 
 [turn]
-phases = ["plot_heading_speed", "resolve_plotted_move", "resolve_attacks"]
+phases = ["plot_heading_speed", "resolve_plotted_move", "plot_fire", "resolve_attacks"]
 
 [[units]]
 id = "red_1"

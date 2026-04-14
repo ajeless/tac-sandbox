@@ -27,7 +27,7 @@ def main() -> int:
     session = start_session(scenario)
 
     print(f"Loaded {scenario['title']} from {scenario['path']}")
-    print("Commands: show, plot <unit> <heading> <speed>, step, log, reset, help, quit")
+    print("Commands: show, plot <unit> <heading> <speed>, fire <unit> <fire|hold>, step, log, reset, help, quit")
 
     while True:
         try:
@@ -47,6 +47,7 @@ def main() -> int:
         if command == "help":
             print("show")
             print("plot <unit> <heading> <speed>")
+            print("fire <unit> <fire|hold>")
             print("step")
             print("log")
             print("reset")
@@ -77,6 +78,20 @@ def main() -> int:
                 scenario,
                 session,
                 {"unit": parts[1], "heading": heading, "speed": speed},
+            )
+            _print_result(result)
+            continue
+        if command == "fire":
+            if len(parts) != 3:
+                print("usage: fire <unit> <fire|hold>")
+                continue
+            if parts[2] not in {"fire", "hold"}:
+                print("fire order must be 'fire' or 'hold'")
+                continue
+            result = submit_input(
+                scenario,
+                session,
+                {"unit": parts[1], "fire": parts[2] == "fire"},
             )
             _print_result(result)
             continue
@@ -112,6 +127,14 @@ def _show_session(scenario: dict, session: dict) -> None:
                     f"  {unit_id}: heading={plot['heading']} speed={plot['speed']}"
                 )
 
+    fire_orders = session["phase_data"].get("fire_orders", {})
+    if fire_orders:
+        print("fire orders:")
+        for unit_id in scenario["unit_order"]:
+            if unit_id in fire_orders:
+                verb = "fire" if fire_orders[unit_id] else "hold"
+                print(f"  {unit_id}: {verb}")
+
 
 def _show_log(session: dict) -> None:
     if not session["log"]:
@@ -125,10 +148,17 @@ def _show_log(session: dict) -> None:
 def _print_result(result: dict) -> None:
     status = result["status"]
     if status == "input_recorded":
-        plot = result["plot"]
-        print(
-            f"stored plot for {result['unit']}: heading={plot['heading']} speed={plot['speed']}"
-        )
+        if result["phase"] == "plot_heading_speed":
+            plot = result["plot"]
+            print(
+                f"stored plot for {result['unit']}: heading={plot['heading']} speed={plot['speed']}"
+            )
+            return
+        if result["phase"] == "plot_fire":
+            verb = "fire" if result["fire"] else "hold"
+            print(f"stored fire order for {result['unit']}: {verb}")
+            return
+        print(result)
         return
 
     if status == "rejected":
@@ -139,7 +169,8 @@ def _print_result(result: dict) -> None:
     if status == "awaiting_input":
         print(f"awaiting input for phase {result['phase']}")
         if result.get("missing_units"):
-            print("missing plots:", ", ".join(result["missing_units"]))
+            label = "missing fire orders" if result["phase"] == "plot_fire" else "missing plots"
+            print(f"{label}:", ", ".join(result["missing_units"]))
         for error in result.get("errors", []):
             print(f"error: {error}")
         return

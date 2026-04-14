@@ -36,6 +36,9 @@ class PhaseHandler:
     def plots(self, session: dict) -> dict:
         return session["phase_data"].setdefault("plots", {})
 
+    def fire_orders(self, session: dict) -> dict:
+        return session["phase_data"].setdefault("fire_orders", {})
+
 
 class PlotHeadingSpeedPhase(PhaseHandler):
     name = "plot_heading_speed"
@@ -116,6 +119,62 @@ class ResolvePlottedMovePhase(PhaseHandler):
         return events
 
 
+class PlotFirePhase(PhaseHandler):
+    name = "plot_fire"
+    accepts_input = True
+
+    def submit_input(self, scenario: dict, session: dict, data: dict) -> dict:
+        unit_id = data.get("unit")
+        fire = data.get("fire")
+
+        if unit_id not in session["units"]:
+            return {"status": "rejected", "errors": [f"unknown unit: {unit_id}"]}
+
+        unit = session["units"][unit_id]
+        if unit["destroyed"]:
+            return {"status": "rejected", "errors": [f"{unit_id} is destroyed"]}
+
+        if not isinstance(fire, bool):
+            return {
+                "status": "rejected",
+                "phase": session["phase"],
+                "errors": [f"{unit_id} fire order must be true or false"],
+            }
+
+        fire_orders = self.fire_orders(session)
+        fire_orders[unit_id] = fire
+        return {
+            "status": "input_recorded",
+            "phase": session["phase"],
+            "unit": unit_id,
+            "fire": fire,
+        }
+
+    def awaiting(self, scenario: dict, session: dict) -> dict | None:
+        fire_orders = self.fire_orders(session)
+        missing = []
+
+        for unit_id, _unit in self.active_units(scenario, session):
+            if unit_id not in fire_orders:
+                missing.append(unit_id)
+
+        if missing:
+            return {"missing_units": missing, "errors": []}
+        return None
+
+    def resolve(self, scenario: dict, session: dict) -> list[dict]:
+        fire_orders = self.fire_orders(session)
+        return [
+            event(
+                session,
+                "fire_orders_locked",
+                unit=unit_id,
+                fire=fire_orders[unit_id],
+            )
+            for unit_id, _unit in self.active_units(scenario, session)
+        ]
+
+
 class ResolveAttacksPhase(PhaseHandler):
     name = "resolve_attacks"
 
@@ -159,6 +218,7 @@ PHASE_HANDLERS = {
     for handler in (
         PlotHeadingSpeedPhase(),
         ResolvePlottedMovePhase(),
+        PlotFirePhase(),
         ResolveAttacksPhase(),
     )
 }

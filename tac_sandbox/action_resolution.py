@@ -12,8 +12,20 @@ def resolve_attacks(
 ) -> list[dict]:
     events = []
     attacks = []
+    fire_orders = session["phase_data"].get("fire_orders", {})
 
     for unit_id in active_unit_ids_for_phase:
+        if not fire_orders.get(unit_id, False):
+            events.append(
+                event(
+                    session,
+                    "attack_skipped",
+                    unit=unit_id,
+                    reason="held_fire",
+                )
+            )
+            continue
+
         attack, attack_events = _resolve_attack(
             scenario,
             session,

@@ -12,6 +12,7 @@ def present_session(
     recent_event_count: int = 12,
 ) -> dict:
     plots = session["phase_data"].get("plots", {})
+    fire_orders = session["phase_data"].get("fire_orders", {})
     entities = []
     for unit_id in scenario["unit_order"]:
         unit = session["units"][unit_id]
@@ -31,6 +32,7 @@ def present_session(
                 },
                 "weapon": deepcopy(unit["weapon"]),
                 "plot": deepcopy(plots.get(unit_id)),
+                "fire_order": deepcopy(fire_orders.get(unit_id)),
             }
         )
 
@@ -67,6 +69,9 @@ def describe_event(event: dict) -> str:
             f"turn {event['turn']} {event['unit']} moved "
             f"{tuple(event['from_hex'])} -> {tuple(event['to_hex'])}"
         )
+    if event_type == "fire_orders_locked":
+        verb = "fire" if event["fire"] else "hold fire"
+        return f"turn {event['turn']} {event['unit']} ordered {verb}"
     if event_type == "move_blocked_bounds":
         return (
             f"turn {event['turn']} {event['unit']} stayed at {tuple(event['from_hex'])} "
@@ -83,6 +88,8 @@ def describe_event(event: dict) -> str:
             f"for {event['damage']} at range {event['range']}"
         )
     if event_type == "attack_skipped":
+        if event["reason"] == "held_fire":
+            return f"turn {event['turn']} {event['unit']} held fire"
         target = f" target={event['target']}" if "target" in event else ""
         return f"turn {event['turn']} {event['unit']} skipped attack{target} reason={event['reason']}"
     if event_type == "damage_applied":

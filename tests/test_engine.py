@@ -35,6 +35,24 @@ class EngineFlowTests(unittest.TestCase):
         self.assertEqual(result["missing_units"], ["blue_1"])
         self.assertEqual(result["errors"], [])
 
+    def test_advance_requires_all_fire_orders(self) -> None:
+        scenario, session = fresh_session()
+
+        submit_input(scenario, session, {"unit": "red_1", "heading": 3, "speed": 1})
+        submit_input(scenario, session, {"unit": "blue_1", "heading": 0, "speed": 1})
+
+        advance(scenario, session)
+        advance(scenario, session)
+        self.assertEqual(session["phase"], "plot_fire")
+
+        submit_input(scenario, session, {"unit": "red_1", "fire": True})
+        result = advance(scenario, session)
+
+        self.assertEqual(result["status"], "awaiting_input")
+        self.assertEqual(result["phase"], "plot_fire")
+        self.assertEqual(result["missing_units"], ["blue_1"])
+        self.assertEqual(result["errors"], [])
+
     def test_units_can_share_a_hex_after_movement(self) -> None:
         scenario, session = fresh_session()
 
@@ -70,6 +88,9 @@ class EngineFlowTests(unittest.TestCase):
 
         advance(scenario, session)
         advance(scenario, session)
+        submit_input(scenario, session, {"unit": "red_1", "fire": True})
+        submit_input(scenario, session, {"unit": "blue_1", "fire": True})
+        advance(scenario, session)
         result = advance(scenario, session)
 
         self.assertEqual(result["status"], "resolved")
@@ -77,6 +98,7 @@ class EngineFlowTests(unittest.TestCase):
         self.assertEqual(session["turn"], 2)
         self.assertEqual(session["phase"], "plot_heading_speed")
         self.assertEqual(session["phase_data"]["plots"], {})
+        self.assertEqual(session["phase_data"]["fire_orders"], {})
         self.assertEqual(session["units"]["red_1"]["speed"], 1)
         self.assertEqual(session["units"]["red_1"]["max_speed"], 3)
         self.assertEqual(session["units"]["red_1"]["shield"], 1)
@@ -84,6 +106,33 @@ class EngineFlowTests(unittest.TestCase):
         self.assertEqual(session["units"]["blue_1"]["speed"], 1)
         self.assertEqual(session["units"]["blue_1"]["max_speed"], 3)
         self.assertEqual(session["units"]["blue_1"]["shield"], 1)
+        self.assertEqual(session["units"]["blue_1"]["hull"], 4)
+
+    def test_holding_fire_skips_attack_resolution_for_that_unit(self) -> None:
+        scenario, session = fresh_session()
+
+        session["units"]["red_1"]["at"] = [0, -2]
+        session["units"]["blue_1"]["at"] = [0, 2]
+
+        submit_input(scenario, session, {"unit": "red_1", "heading": 3, "speed": 1})
+        submit_input(scenario, session, {"unit": "blue_1", "heading": 0, "speed": 1})
+
+        advance(scenario, session)
+        advance(scenario, session)
+        submit_input(scenario, session, {"unit": "red_1", "fire": False})
+        submit_input(scenario, session, {"unit": "blue_1", "fire": True})
+        advance(scenario, session)
+        result = advance(scenario, session)
+
+        self.assertEqual(result["status"], "resolved")
+        self.assertEqual(result["phase"], "resolve_attacks")
+        self.assertIn(
+            ("attack_skipped", "red_1", "held_fire"),
+            [(event["type"], event["unit"], event["reason"]) for event in result["events"] if event["type"] == "attack_skipped"],
+        )
+        self.assertEqual(session["units"]["red_1"]["shield"], 1)
+        self.assertEqual(session["units"]["red_1"]["hull"], 4)
+        self.assertEqual(session["units"]["blue_1"]["shield"], 2)
         self.assertEqual(session["units"]["blue_1"]["hull"], 4)
 
     def test_attack_resolution_can_end_the_session_when_no_active_units_remain(self) -> None:
@@ -100,6 +149,9 @@ class EngineFlowTests(unittest.TestCase):
         submit_input(scenario, session, {"unit": "blue_1", "heading": 0, "speed": 0})
 
         advance(scenario, session)
+        advance(scenario, session)
+        submit_input(scenario, session, {"unit": "red_1", "fire": True})
+        submit_input(scenario, session, {"unit": "blue_1", "fire": True})
         advance(scenario, session)
         result = advance(scenario, session)
 

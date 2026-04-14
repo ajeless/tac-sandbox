@@ -36,7 +36,8 @@
       }
 
       button,
-      input {
+      input,
+      select {
         border: 1px solid rgba(145, 170, 196, 0.22);
         border-radius: 12px;
         background: rgba(13, 27, 44, 0.85);
@@ -57,7 +58,8 @@
       }
 
       button:disabled,
-      input:disabled {
+      input:disabled,
+      select:disabled {
         cursor: not-allowed;
         opacity: 0.58;
       }
@@ -68,7 +70,8 @@
         background: rgba(13, 27, 44, 0.85);
       }
 
-      input {
+      input,
+      select {
         width: 100%;
         padding: 10px 12px;
       }
@@ -393,7 +396,11 @@
 
       function defaultDraft(entity) {
         const plot = entity.plot || { heading: entity.facing, speed: entity.stats.speed };
-        return { heading: plot.heading, speed: plot.speed };
+        return {
+          heading: plot.heading,
+          speed: plot.speed,
+          fire: entity.fire_order ?? false,
+        };
       }
 
       function rebuildDrafts(entities) {
@@ -428,17 +435,27 @@
         if (phase === "resolve_plotted_move") {
           return {
             label: "Resolve Movement",
-            guide: "Orders are locked. The next step resolves movement.",
+            guide: "Heading and speed are locked. The next step resolves movement.",
             plotEnabled: false,
             plotLabel: "Plots Locked",
             stepEnabled: true,
             stepLabel: "Resolve Movement",
           };
         }
+        if (phase === "plot_fire") {
+          return {
+            label: "Plot Fire",
+            guide: "Choose fire or hold for each active ship, then lock fire orders.",
+            plotEnabled: true,
+            plotLabel: "Submit Fire Orders",
+            stepEnabled: true,
+            stepLabel: "Lock Fire Orders",
+          };
+        }
         if (phase === "resolve_attacks") {
           return {
             label: "Resolve Attacks",
-            guide: "Movement is complete. The next step resolves attacks.",
+            guide: "Fire orders are locked. The next step resolves attacks.",
             plotEnabled: false,
             plotLabel: "Await Next Turn",
             stepEnabled: true,
@@ -461,9 +478,15 @@
         }
         if (result.status === "awaiting_input") {
           const missing = (result.missing_units || []).join(", ");
+          if (result.phase === "plot_fire") {
+            return missing ? `Missing fire orders: ${missing}` : "Missing fire orders";
+          }
           return missing ? `Missing plots: ${missing}` : "Missing plots";
         }
         if (result.status === "input_recorded") {
+          if (result.phase === "plot_fire") {
+            return `Stored ${result.unit} fire order: ${result.fire ? "fire" : "hold"}`;
+          }
           return `Stored ${result.unit} plot ${result.plot.heading}:${result.plot.speed}`;
         }
         if (result.status === "terminal") {
@@ -477,7 +500,10 @@
             return "Orders locked. Next: resolve movement.";
           }
           if (result.phase === "resolve_plotted_move") {
-            return "Movement resolved. Next: resolve attacks.";
+            return "Movement resolved. Next: enter fire orders.";
+          }
+          if (result.phase === "plot_fire") {
+            return "Fire orders locked. Next: resolve attacks.";
           }
           if (result.phase === "resolve_attacks") {
             return "Attacks resolved. Next: enter new plots.";
@@ -519,7 +545,7 @@
         statusEl.textContent = statusText(data.result);
       }
 
-      async function submitPlots() {
+      async function submitPhaseInput() {
         if (!snapshot) {
           return;
         }
@@ -527,8 +553,9 @@
           statusEl.textContent = snapshot.terminal.text;
           return;
         }
-        if (snapshot.turn.phase !== "plot_heading_speed") {
-          statusEl.textContent = "Plots can only be submitted during Plot Orders.";
+
+        if (!["plot_heading_speed", "plot_fire"].includes(snapshot.turn.phase)) {
+          statusEl.textContent = "Manual input is only accepted during input phases.";
           return;
         }
 
@@ -539,13 +566,19 @@
 
         for (const entity of activeEntities) {
           const draft = plotDrafts[entity.id] || defaultDraft(entity);
+          const body = snapshot.turn.phase === "plot_fire"
+            ? {
+                unit: entity.id,
+                fire: Boolean(draft.fire),
+              }
+            : {
+                unit: entity.id,
+                heading: Number(draft.heading),
+                speed: Number(draft.speed),
+              };
           const data = await request("/api/plot", {
             method: "POST",
-            body: JSON.stringify({
-              unit: entity.id,
-              heading: Number(draft.heading),
-              speed: Number(draft.speed),
-            }),
+            body: JSON.stringify(body),
           });
           latestSnapshot = data.snapshot;
           if (data.result.status === "input_recorded") {
@@ -560,9 +593,13 @@
           statusEl.textContent = errors.join("\n");
           return;
         }
-        statusEl.textContent = recordedUnits.length > 0
-          ? `Stored plots for ${recordedUnits.join(", ")}. Next: lock orders.`
-          : "No active units";
+        if (recordedUnits.length === 0) {
+          statusEl.textContent = "No active units";
+          return;
+        }
+        statusEl.textContent = snapshot.turn.phase === "plot_fire"
+          ? `Stored fire orders for ${recordedUnits.join(", ")}. Next: lock fire orders.`
+          : `Stored plots for ${recordedUnits.join(", ")}. Next: lock orders.`;
       }
 
       function applySnapshot(nextSnapshot) {
@@ -586,12 +623,17 @@
         if (!(unitId in plotDrafts)) {
           return;
         }
+        if (field === "fire") {
+          plotDrafts[unitId][field] = value === true || value === "fire";
+          return;
+        }
         plotDrafts[unitId][field] = value;
       }
 
       function renderUnits(entities) {
         unitsEl.innerHTML = "";
         const plotEditable = snapshot && snapshot.turn.phase === "plot_heading_speed" && !snapshot.terminal;
+        const fireEditable = snapshot && snapshot.turn.phase === "plot_fire" && !snapshot.terminal;
         for (const entity of entities) {
           const card = document.createElement("article");
           card.className = "unit-card";
@@ -601,6 +643,9 @@
           const plotText = entity.plot
             ? `locked plot ${entity.plot.heading}:${entity.plot.speed}`
             : "no locked plot";
+          const fireText = entity.fire_order == null
+            ? "no fire order"
+            : (entity.fire_order ? "fire ordered" : "hold fire ordered");
 
           card.innerHTML = `
             <div class="unit-layout">
@@ -613,6 +658,7 @@
                   <div>hex ${entity.at[0]},${entity.at[1]} | facing ${entity.facing}</div>
                   <div>hull ${entity.stats.hull} | shield ${entity.stats.shield} | speed ${entity.stats.speed} / max ${entity.stats.max_speed}</div>
                   <div>${plotText}</div>
+                  <div>${fireText}</div>
                 </div>
               </div>
               <div class="plot-stack">
@@ -624,6 +670,13 @@
                   Speed
                   <input data-unit="${entity.id}" data-field="speed" type="number" min="0" max="${entity.stats.max_speed}" value="${draft.speed}" ${entity.destroyed || !plotEditable ? "disabled" : ""}>
                 </label>
+                <label class="plot-field">
+                  Fire
+                  <select data-unit="${entity.id}" data-field="fire" ${entity.destroyed || !fireEditable ? "disabled" : ""}>
+                    <option value="hold"${draft.fire ? "" : " selected"}>Hold</option>
+                    <option value="fire"${draft.fire ? " selected" : ""}>Fire</option>
+                  </select>
+                </label>
               </div>
             </div>
           `;
@@ -631,11 +684,14 @@
           unitsEl.appendChild(card);
         }
 
-        for (const input of unitsEl.querySelectorAll("input[data-unit]")) {
-          input.addEventListener("input", (event) => {
+        for (const control of unitsEl.querySelectorAll("[data-unit][data-field]")) {
+          const syncDraft = (event) => {
             const target = event.currentTarget;
-            updateDraft(target.dataset.unit, target.dataset.field, Number(target.value));
-          });
+            const value = target.dataset.field === "fire" ? target.value : Number(target.value);
+            updateDraft(target.dataset.unit, target.dataset.field, value);
+          };
+          control.addEventListener("input", syncDraft);
+          control.addEventListener("change", syncDraft);
         }
       }
 
@@ -823,7 +879,7 @@
       }
 
       plotButton.addEventListener("click", () => {
-        submitPlots().catch((error) => {
+        submitPhaseInput().catch((error) => {
           statusEl.textContent = String(error);
         });
       });

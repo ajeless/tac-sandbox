@@ -170,7 +170,7 @@ def start_session(scenario: dict) -> dict:
         "turn": 1,
         "phase": scenario["turn"]["phases"][0],
         "units": units,
-        "phase_data": {"plots": {}},
+        "phase_data": {"plots": {}, "fire_orders": {}},
         "log": [],
     }
 
@@ -235,4 +235,4 @@ def _advance_phase(scenario: dict, session: dict) -> None:
 
     session["turn"] += 1
     session["phase"] = phases[0]
-    session["phase_data"] = {"plots": {}}
+    session["phase_data"] = {"plots": {}, "fire_orders": {}}
